@@ -1,0 +1,3090 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cisco Config ネットワーク図ジェネレーター</title>
+<style>
+  :root{
+    --ink:#16212E; --panel:#1D2A3A; --panel2:#243447; --line:#33465C;
+    --txt:#E8EEF4; --txt-dim:#93A6B8; --canvas-bg:#F7F9FB;
+    --fiber:#E8930C; --utp:#4A7FA5; --dac:#2AA198; --po:#7C5CBF;
+    --root-gold:#C9A227; --accent:#3FA7D6; --danger:#D95757; --ok:#3FAE6A;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono','Consolas',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Hiragino Kaku Gothic ProN','Yu Gothic UI','Meiryo',system-ui,sans-serif;
+    background:var(--ink);color:var(--txt);display:flex;flex-direction:column;overflow:hidden}
+
+  /* ---- header ---- */
+  header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--panel);
+    border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{font-size:15px;font-weight:700;letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+  header h1 .mark{font-family:var(--mono);font-size:11px;color:var(--accent);border:1px solid var(--accent);
+    border-radius:4px;padding:2px 6px}
+  .spacer{flex:1}
+  .btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;
+    padding:6px 12px;font-size:12.5px;cursor:pointer;transition:.15s;white-space:nowrap}
+  .btn:hover{border-color:var(--accent);color:#fff}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#0B1520;font-weight:700}
+  .btn.primary:hover{filter:brightness(1.1)}
+  .btn.ghost{background:transparent}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn:disabled{opacity:.35;cursor:default;pointer-events:none}
+
+  /* ---- layout ---- */
+  .wrap{flex:1;display:flex;min-height:0}
+  aside{width:360px;min-width:300px;background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0}
+  .side-tabs{display:flex;border-bottom:1px solid var(--line)}
+  .side-tabs button{flex:1;background:none;border:none;color:var(--txt-dim);padding:10px 4px;
+    font-size:12.5px;cursor:pointer;border-bottom:2px solid transparent}
+  .side-tabs button.on{color:var(--txt);border-bottom-color:var(--accent);font-weight:700}
+  .side-body{flex:1;overflow-y:auto;padding:14px;font-size:12.5px}
+  .side-body h3{font-size:11px;color:var(--txt-dim);letter-spacing:.08em;margin:14px 0 6px;font-weight:700}
+  .side-body h3:first-child{margin-top:0}
+  textarea{width:100%;background:#0F1823;color:#CDE3F5;border:1px solid var(--line);border-radius:6px;
+    font-family:var(--mono);font-size:11px;padding:8px;resize:vertical;line-height:1.5}
+  textarea:focus,select:focus,input:focus{outline:1.5px solid var(--accent)}
+  select,input[type=text]{background:#0F1823;color:var(--txt);border:1px solid var(--line);
+    border-radius:5px;padding:5px 6px;font-size:12px;max-width:100%}
+  label{color:var(--txt-dim)}
+
+  .dev-card{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;
+    margin-bottom:8px;cursor:pointer;transition:.15s}
+  .dev-card:hover,.dev-card.sel{border-color:var(--accent)}
+  .dev-card .nm{font-family:var(--mono);font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px}
+  .dev-card .meta{color:var(--txt-dim);font-size:11px;margin-top:3px}
+  .badge{font-size:9.5px;border-radius:3px;padding:1px 5px;font-weight:700;letter-spacing:.03em}
+  .badge.root{background:var(--root-gold);color:#1c1500}
+  .badge.l3{background:#365B7A;color:#D6EBFA}
+  .del{color:var(--danger);background:none;border:none;cursor:pointer;font-size:13px;float:right;padding:0 2px}
+
+  table.conn{width:100%;border-collapse:collapse;font-size:11px}
+  table.conn th{color:var(--txt-dim);text-align:left;padding:3px 4px;font-weight:400;border-bottom:1px solid var(--line)}
+  table.conn td{padding:3px 3px;border-bottom:1px solid #2A3B4F;vertical-align:middle}
+  table.conn select{width:100%;font-size:10.5px;padding:3px 2px;font-family:var(--mono)}
+  .src-tag{font-size:9px;padding:1px 4px;border-radius:3px;background:#33465C;color:#BCD2E4}
+  .src-tag.cdp{background:#1F5C46;color:#BEF3DC}
+  .src-tag.desc{background:#5C4A1F;color:#F3E4BE}
+
+  .kv{display:grid;grid-template-columns:88px 1fr;gap:4px 8px;font-size:12px;margin-bottom:8px}
+  .kv b{color:var(--txt-dim);font-weight:400}
+  table.if{width:100%;border-collapse:collapse;font-size:10.5px;font-family:var(--mono)}
+  table.if th{color:var(--txt-dim);text-align:left;font-weight:400;padding:3px;border-bottom:1px solid var(--line);font-family:inherit}
+  table.if td{padding:3px;border-bottom:1px solid #2A3B4F;word-break:break-all}
+  .media-pill{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px;vertical-align:middle}
+
+  /* ---- main ---- */
+  main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .view-bar{display:flex;align-items:center;gap:8px;row-gap:6px;padding:8px 14px;background:var(--panel);
+    border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .vtab{background:none;border:1px solid var(--line);color:var(--txt-dim);border-radius:6px;
+    padding:6px 16px;font-size:13px;cursor:pointer;font-weight:700}
+  .vtab.on{background:var(--accent);border-color:var(--accent);color:#0B1520}
+  .hint{color:var(--txt-dim);font-size:11.5px}
+  .canvas-holder{flex:1;overflow:auto;background:var(--canvas-bg);position:relative}
+  svg.diagram{display:block;
+    background-image:radial-gradient(circle,#D8E1E8 1px,transparent 1px);background-size:24px 24px}
+  svg.diagram text{user-select:none}
+
+  .node{cursor:grab}
+  .node:active{cursor:grabbing}
+  .node .body{stroke:#31465C;stroke-width:1.4}
+  .node.sel .body{stroke:var(--accent);stroke-width:2.6}
+  .segnode .seg-body{stroke-width:1.6}
+  .node.sel .seg-body{stroke:var(--accent)!important;stroke-width:2.8}
+  .note{cursor:grab}
+  .note .note-body{stroke:#B8A24C;stroke-width:1.2}
+  .note.sel .note-body{stroke:var(--accent);stroke-width:2.4}
+  .swatch{width:22px;height:22px;border-radius:5px;border:1px solid #9FB4C6;cursor:pointer;padding:0}
+  .swatch:hover{outline:2px solid var(--accent)}
+  .node text.hn{font-family:var(--mono);font-size:13px;font-weight:700;fill:#16212E}
+  .node text.loc{font-size:10px;fill:#6B8096}
+  .node text.sub{font-size:9.5px;fill:#8A9BAB;font-family:var(--mono)}
+
+  .portlbl{font-family:var(--mono);font-size:9.5px;fill:#31465C}
+  .portlbl-bg{fill:#FFFFFF;opacity:.88;rx:2}
+  .midlbl{font-family:var(--mono);font-size:9.5px;fill:#5A4A12}
+  .grp-box{fill:#EDF3F7;stroke:#9FB4C6;stroke-dasharray:6 4;stroke-width:1.2;rx:12}
+  .grp-lbl{font-size:12px;font-weight:700;fill:#4E6478}
+
+  /* ---- 一覧表 ---- */
+  .list-wrap{padding:18px 22px;color:#22303C;max-width:1200px}
+  .list-wrap h2{font-size:14px;margin:20px 0 8px;color:#2A3B4C;display:flex;align-items:center;gap:10px}
+  .list-wrap h2:first-child{margin-top:0}
+  table.list{width:100%;border-collapse:collapse;background:#fff;font-size:12px;box-shadow:0 1px 3px rgba(20,40,60,.08)}
+  table.list th{background:#31465C;color:#fff;text-align:left;padding:7px 10px;font-weight:700;font-size:11.5px;white-space:nowrap}
+  table.list td{border-bottom:1px solid #DCE5EC;padding:6px 10px;vertical-align:top;line-height:1.5}
+  table.list tr:nth-child(even) td{background:#F4F8FA}
+  table.list td.mono{font-family:var(--mono);font-size:11.5px}
+  .csv-btn{background:#fff;border:1px solid #9FB4C6;color:#31465C;border-radius:5px;padding:3px 12px;font-size:11px;cursor:pointer;font-weight:400}
+  .csv-btn:hover{border-color:var(--accent);color:var(--accent)}
+  dialog{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--txt);
+    max-width:640px;width:92%;padding:18px}
+  dialog::backdrop{background:rgba(5,10,16,.6)}
+  dialog h2{font-size:14px;margin-bottom:10px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#0F1823;
+    border:1px solid var(--accent);color:var(--txt);border-radius:8px;padding:9px 18px;font-size:12.5px;
+    z-index:99;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="mark">CFG→NET</span>Cisco Config ネットワーク図ジェネレーター</h1>
+  <span class="spacer"></span>
+  <span id="asStatus" style="font-size:11px;color:var(--txt-dim)"></span>
+  <button class="btn" id="btnUndo" title="元に戻す (Ctrl+Z)">↩ 戻す</button>
+  <button class="btn" id="btnRedo" title="やり直す (Ctrl+Y / Ctrl+Shift+Z)">↪</button>
+  <button class="btn" id="btnNew">新規</button>
+  <button class="btn" id="btnSample">サンプル読込</button>
+  <button class="btn" id="btnAuto">自動配置</button>
+  <button class="btn" id="btnJsonSave">JSON保存</button>
+  <button class="btn" id="btnJsonLoad">JSON読込</button>
+  <input type="file" id="fileJson" accept=".json" style="display:none">
+  <button class="btn" id="btnSvg">SVG出力</button>
+  <button class="btn primary" id="btnPng">PNG出力</button>
+</header>
+
+<div class="wrap">
+  <aside>
+    <div class="side-tabs">
+      <button data-st="devices" class="on">機器</button>
+      <button data-st="links">接続</button>
+      <button data-st="detail">詳細</button>
+    </div>
+    <div class="side-body" id="sideBody"></div>
+  </aside>
+
+  <main>
+    <div class="view-bar">
+      <button class="vtab on" data-v="logical">論理図</button>
+      <button class="vtab" data-v="physical">物理図</button>
+      <button class="vtab" data-v="l3">L3図</button>
+      <button class="vtab" data-v="table">一覧表</button>
+      <span style="width:1px;height:22px;background:var(--line)"></span>
+      <input type="text" id="devSearch" placeholder="機器名で検索" style="width:130px">
+      <select id="vlanFilter"><option value="">VLAN絞込なし</option></select>
+      <button class="btn ghost" id="btnAddNote">＋コメント</button>
+      <button class="btn ghost" id="btnSyncLayout" title="論理図の機器配置を物理図に反映します">論理→物理 配置コピー</button>
+      <span id="l3Tools" style="display:none;gap:6px;align-items:center">
+        <label style="display:flex;gap:4px;align-items:center;font-size:11px;color:var(--txt-dim);cursor:pointer;white-space:nowrap" title="L2スイッチと物理配線を薄く重ねて表示し、セグメントがどの機器を経由して延びているかを確認できます">
+          <input type="checkbox" id="chkL2">L2重ね表示</label>
+        <button class="btn ghost" id="btnL3Auto" title="ルーター/L3スイッチを階層配置し、セグメントを接続機器の近くに再配置します">L3自動配置</button>
+        <button class="btn ghost" id="btnL3FromLogical" title="論理図の機器配置をL3図にコピーし、セグメントを付け直します">論理図の配置を反映</button>
+      </span>
+      <span id="alignTools" style="display:flex;gap:3px;align-items:center">
+        <span style="font-size:10.5px;color:var(--txt-dim);margin-left:4px">整列:</span>
+        <button class="btn ghost" data-al="left"   title="左揃え">⇤</button>
+        <button class="btn ghost" data-al="right"  title="右揃え">⇥</button>
+        <button class="btn ghost" data-al="top"    title="上揃え">⤒</button>
+        <button class="btn ghost" data-al="bottom" title="下揃え">⤓</button>
+        <button class="btn ghost" data-ds="h" title="左右に等間隔で整列">↔</button>
+        <button class="btn ghost" data-ds="v" title="上下に等間隔で整列">↕</button>
+      </span>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="zoomOut" title="縮小">−</button>
+      <span id="zoomPct" style="font-size:11px;color:var(--txt-dim);min-width:40px;text-align:center">100%</span>
+      <button class="btn ghost" id="zoomIn" title="拡大">＋</button>
+      <button class="btn ghost" id="zoomFit">全体表示</button>
+    </div>
+    <div class="canvas-holder" id="canvasHolder"></div>
+  </main>
+</div>
+
+<dialog id="dlgSave">
+  <h2>ファイル名を指定して保存</h2>
+  <div style="display:flex;gap:8px;align-items:center">
+    <input type="text" id="saveName" style="flex:1" placeholder="例: 顧客A_本社NW">
+    <span style="color:var(--txt-dim);font-size:12px">.json</span>
+  </div>
+  <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn ghost" id="btnSaveCancel">キャンセル</button>
+    <button class="btn primary" id="btnSaveOk">保存</button>
+  </div>
+  <div style="margin-top:10px;font-size:11px;color:var(--txt-dim)">※ ここで付けた名前はPNG/SVG出力のファイル名にも使われます</div>
+</dialog>
+<div class="toast" id="toast"></div>
+<script>
+'use strict';
+/* ============================================================
+   Cisco Config → ネットワーク図ジェネレーター v1.7 (〜100台対応 / L3図ビュー搭載)
+   ============================================================ */
+
+// ---------------- state ----------------
+const state = {
+  devices: [], links: [],
+  view: 'logical', sideTab: 'devices', selectedDevice: null,
+  zoom: 1, vlanFilter: '', search: '',
+  projectName: '',
+  sel: [], selectedNote: null, notes: [],
+  arp: {},   // MACアドレス→IP (show arp から)
+  seq: 1,
+  l3SegPos: {}, showL2: false,
+};
+// 手動追加オブジェクトの種別定義
+const CTYPES = {
+  server:      { label: 'サーバ',            chip: 'SV',  color: '#4E8A5A' },
+  firewall:    { label: 'FW / UTM',          chip: 'FW',  color: '#C05A5A' },
+  loadbalancer:{ label: 'ロードバランサ',    chip: 'LB',  color: '#B8860B' },
+  ap:          { label: '無線AP',            chip: 'AP',  color: '#7C5CBF' },
+  storage:     { label: 'ストレージ / NAS',  chip: 'NAS', color: '#8A6D3B' },
+  ups:         { label: 'UPS',               chip: 'UPS', color: '#606B76' },
+  printer:     { label: 'プリンタ / 複合機', chip: 'PR',  color: '#5F8575' },
+  pc:          { label: 'PC / 端末',         chip: 'PC',  color: '#7A8B9A' },
+  phone:       { label: 'IP電話',            chip: 'TEL', color: '#3E7CB1' },
+  wan:         { label: 'WAN / インターネット', chip: 'WAN', color: '#5A7CC0' },
+  other:       { label: 'その他',            chip: 'ETC', color: '#708090' },
+};
+function newIfEntry(media){
+  return { desc:'', mode:'', accessVlan:null, trunkVlans:[], nativeVlan:null,
+    channelGroup:null, chMode:'', shutdown:false, media: media || 'utp',
+    ip:'', ips:[], fhrp:[], dot1q:null };
+}
+function makeCustomDevice(name, ctype, ports, mgmtIp){
+  const ifs = {};
+  (ports.length ? ports : ['Port1']).forEach(p => ifs[p] = newIfEntry('utp'));
+  return { id: uid(), hostname: name, custom: true, ctype: ctype || 'other', mgmtIp: mgmtIp || '',
+    interfaces: ifs, vlans: {}, isL3: false, stp: { mode: '', priorities: {} },
+    staticRoutes: 0, routing: [], acls: [], stack: {}, location: '', pos: null, physPos: null, rawConfig: '' };
+}
+let editingLink = null;
+const uid = () => 'id' + (state.seq++);
+const $ = s => document.querySelector(s);
+const devById = id => state.devices.find(d => d.id === id);
+const el = (tag, attrs = {}, ...kids) => {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svgTags = ['svg','g','rect','line','path','text','circle','polyline','defs','marker','tspan'];
+  const e = svgTags.includes(tag) ? document.createElementNS(ns, tag) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.setAttribute('class', v);
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids) e.append(k);
+  return e;
+};
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2800); }
+
+// ---------------- interface name utils ----------------
+const IF_TYPES = [
+  ['HundredGigE',        ['hundredgige','hundredgigabitethernet','hu'],  'fiber'],
+  ['FortyGigE',          ['fortygige','fortygigabitethernet','fo'],      'fiber'],
+  ['TwentyFiveGigE',     ['twentyfivegige','twe'],                        'fiber'],
+  ['TenGigabitEthernet', ['tengigabitethernet','tengige','tengiga','tengig','te','t'], 'fiber'],
+  ['TwoGigabitEthernet', ['twogigabitethernet','tw'],                     'utp'],
+  ['GigabitEthernet',    ['gigabitethernet','gigabit','giga','gige','gig','gi','ge','g'], 'utp'],
+  ['FastEthernet',       ['fastethernet','fasteth','fast','fas','fa','f'], 'utp'],
+  ['Port-channel',       ['port-channel','po'],                           null],
+  ['Ethernet',           ['ethernet','eth','e'],                          'utp'],
+  ['Vlan',               ['vlan','vl'],                                   null],
+  ['Loopback',           ['loopback','lo'],                               null],
+];
+const SHORT = {'HundredGigE':'Hu','FortyGigE':'Fo','TwentyFiveGigE':'Twe','TenGigabitEthernet':'Te',
+  'TwoGigabitEthernet':'Tw','GigabitEthernet':'Gi','FastEthernet':'Fa','Port-channel':'Po','Ethernet':'Eth','Vlan':'Vl','Loopback':'Lo'};
+
+function canonIf(raw){
+  const m = String(raw).trim().match(/^([A-Za-z-]+)\s*([\d/.:]+)$/);
+  if (!m) return null;
+  const p = m[1].toLowerCase().replace(/-$/,'');
+  for (const [full, aliases] of IF_TYPES)
+    if (aliases.includes(p) || full.toLowerCase() === p) return full + m[2];
+  return null;
+}
+function shortIf(full){
+  const m = String(full).match(/^([A-Za-z-]+)([\d/.:]+)$/);
+  if (!m) return full;
+  return (SHORT[m[1]] || m[1]) + m[2];
+}
+function ifDefaultMedia(full){
+  const m = String(full).match(/^([A-Za-z-]+)/);
+  if (!m) return 'unknown';
+  const t = IF_TYPES.find(x => x[0] === m[1]);
+  return (t && t[2]) || 'unknown';
+}
+const isPhysicalIf = f => !/^(Vlan|Loopback|Port-channel)/.test(f);
+
+function parseVlanList(s){
+  const out = [];
+  for (const part of String(s).split(',')) {
+    const m = part.trim().match(/^(\d+)(?:-(\d+))?$/);
+    if (!m) continue;
+    const a = +m[1], b = m[2] ? +m[2] : a;
+    for (let v = a; v <= Math.min(b, a + 4094); v++) out.push(v);
+  }
+  return out;
+}
+const FW_RE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/;
+function textUnits(s){ // 半角=1, 全角=2
+  let u = 0;
+  for (const ch of String(s)) u += FW_RE.test(ch) ? 2 : 1;
+  return u;
+}
+function clipUnits(s, max){
+  let u = 0, out = '';
+  for (const ch of String(s)){
+    const w = FW_RE.test(ch) ? 2 : 1;
+    if (u + w > max) return out + '…';
+    u += w; out += ch;
+  }
+  return out;
+}
+function vlanSummaryStr(arr, maxChars = 22){
+  const uniq = new Set(arr);
+  const full = vlanRangeStr(arr);
+  if (full.length <= maxChars) return full;
+  let cut = full.slice(0, maxChars);
+  const i = cut.lastIndexOf(',');
+  if (i > 3) cut = cut.slice(0, i);
+  return cut + `…(全${uniq.size})`;
+}
+function vlanRangeStr(arr){
+  const a = [...new Set(arr)].sort((x,y)=>x-y); const out=[];
+  for (let i=0;i<a.length;i++){ let j=i; while(j+1<a.length&&a[j+1]===a[j]+1)j++;
+    out.push(i===j?String(a[i]):a[i]+'-'+a[j]); i=j; }
+  return out.join(',');
+}
+
+// ---------------- config parser ----------------
+function splitConfigs(text){
+  const lines = text.replace(/\r/g,'').split('\n');
+  const chunks = []; let cur = null; let pre = [];
+  for (const ln of lines){
+    const m = ln.match(/^hostname\s+(\S+)/i);
+    if (m){ cur = { hostname: m[1], lines: [...pre, ln] }; chunks.push(cur); pre = []; }
+    else if (cur) cur.lines.push(ln);
+    else pre.push(ln);
+  }
+  return chunks;
+}
+
+function parseDeviceConfig(hostname, lines){
+  const dev = { id: uid(), hostname, interfaces: {}, vlans: {}, isL3: false,
+    stp: { mode: '', priorities: {} }, location: '', pos: null, physPos: null,
+    staticRoutes: 0, routing: [], acls: [], stack: {},
+    rawConfig: lines.join('\n') };
+  let ctx = null;
+  for (let raw of lines){
+    const ln = raw.replace(/\s+$/,'');
+    const ind = /^\s/.test(ln);
+    const t = ln.trim();
+    if (!ind){
+      ctx = null;
+      let m;
+      if ((m = t.match(/^interface\s+(.+)$/i))){
+        const full = canonIf(m[1]) || m[1].replace(/\s+/g,'');
+        dev.interfaces[full] = dev.interfaces[full] || { desc:'', mode:'', accessVlan:null,
+          trunkVlans:[], nativeVlan:null, channelGroup:null, chMode:'', shutdown:false,
+          media:isPhysicalIf(full)?ifDefaultMedia(full):null, ip:'', ips:[], fhrp:[], dot1q:null };
+        ctx = { type:'if', key: full };
+      } else if ((m = t.match(/^vlan\s+([\d,\-\s]+)$/i))){
+        const vs = parseVlanList(m[1]);
+        for (const v of vs) if (!(v in dev.vlans)) dev.vlans[v] = '';
+        ctx = vs.length === 1 ? { type:'vlan', key: vs[0] } : null;
+      } else if ((m = t.match(/^spanning-tree\s+mode\s+(\S+)/i))){
+        dev.stp.mode = m[1];
+      } else if ((m = t.match(/^spanning-tree\s+vlan\s+([\d,\-]+)\s+priority\s+(\d+)/i))){
+        for (const v of parseVlanList(m[1])) dev.stp.priorities[v] = +m[2];
+      } else if (/^ip\s+routing/i.test(t)){ dev.isL3 = true;
+      } else if (/^ip\s+route\s+/i.test(t)){ dev.staticRoutes++;
+      } else if ((m = t.match(/^router\s+(eigrp|ospf|bgp|rip)\s*(\S*)/i))){
+        const r = m[1].toUpperCase() + (m[2] ? ' ' + m[2] : '');
+        if (!dev.routing.includes(r)) dev.routing.push(r);
+      } else if ((m = t.match(/^access-list\s+(\d+)/i))){
+        if (!dev.acls.includes(m[1])) dev.acls.push(m[1]);
+      } else if ((m = t.match(/^ip\s+access-list\s+(?:standard|extended)\s+(\S+)/i))){
+        if (!dev.acls.includes(m[1])) dev.acls.push(m[1]);
+      } else if ((m = t.match(/^switch\s+(\d+)\s+(?:provision\s+(\S+)|priority)/i))){
+        dev.stack[m[1]] = m[2] || dev.stack[m[1]] || '';
+      }
+      continue;
+    }
+    if (ctx && ctx.type === 'vlan'){
+      const m = t.match(/^name\s+(\S+)/i);
+      if (m) dev.vlans[ctx.key] = m[1];
+    } else if (ctx && ctx.type === 'if'){
+      const it = dev.interfaces[ctx.key]; let m;
+      if ((m = t.match(/^description\s+(.+)$/i))) it.desc = m[1].trim();
+      else if ((m = t.match(/^switchport\s+mode\s+(\S+)/i))) it.mode = m[1];
+      else if ((m = t.match(/^switchport\s+access\s+vlan\s+(\d+)/i))) it.accessVlan = +m[1];
+      else if ((m = t.match(/^switchport\s+trunk\s+native\s+vlan\s+(\d+)/i))) it.nativeVlan = +m[1];
+      else if ((m = t.match(/^switchport\s+trunk\s+allowed\s+vlan\s+(add\s+)?([\d,\-]+)/i)))
+        it.trunkVlans = (m[1] ? it.trunkVlans : []).concat(parseVlanList(m[2]));
+      else if ((m = t.match(/^channel-group\s+(\d+)\s+mode\s+(\S+)/i))){ it.channelGroup = +m[1]; it.chMode = m[2]; }
+      else if ((m = t.match(/^media-type\s+(\S+)/i)))
+        it.media = /sfp|fiber|fibre/i.test(m[1]) ? 'fiber' : 'utp';
+      else if ((m = t.match(/^ip\s+address\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)(\s+secondary)?/i))){
+        const a = m[1] + ' ' + m[2];
+        it.ips.push(a + (m[3] ? ' (sec)' : ''));
+        if (!m[3]) it.ip = a;
+      }
+      else if ((m = t.match(/^(standby|vrrp)\s+(\d+)\s+ip(?:v4)?\s+(\d+\.\d+\.\d+\.\d+)/i)))
+        it.fhrp.push({ type: m[1].toLowerCase() === 'standby' ? 'HSRP' : 'VRRP', grp: +m[2], vip: m[3] });
+      else if ((m = t.match(/^vrrp\s+(\d+)\s+address-family/i))) ctx.vrrpGrp = +m[1];
+      else if (ctx.vrrpGrp !== undefined && (m = t.match(/^address\s+(\d+\.\d+\.\d+\.\d+)/i)))
+        it.fhrp.push({ type: 'VRRP', grp: ctx.vrrpGrp, vip: m[1] });
+      else if ((m = t.match(/^encapsulation\s+dot1q\s+(\d+)/i))) it.dot1q = +m[1];
+      else if (/^shutdown$/i.test(t)) it.shutdown = true;
+      else if (/^no\s+switchport$/i.test(t)) it.mode = 'routed';
+    }
+  }
+  return dev;
+}
+
+function importConfigs(text){
+  const chunks = splitConfigs(text);
+  if (!chunks.length){ toast('hostname 行が見つかりません。configを確認してください'); return; }
+  let added = 0, replaced = 0;
+  for (const c of chunks){
+    const dev = parseDeviceConfig(c.hostname, c.lines);
+    const i = state.devices.findIndex(d => d.hostname === dev.hostname);
+    if (i >= 0){
+      const old = state.devices[i];
+      // 図上の編集内容は維持して中身だけ更新
+      dev.id = old.id; dev.pos = old.pos; dev.physPos = old.physPos;
+      dev.location = old.location; dev.color = old.color || '';
+      dev.dispType = old.dispType || '';
+      // status取込などで精緻化した媒体・descを引き継ぐ
+      // (新configが明示していない=IF名からのデフォルト値のままの場合のみ)
+      for (const [p, nit] of Object.entries(dev.interfaces)){
+        const oit = old.interfaces && old.interfaces[p];
+        if (!oit) continue;
+        if (nit.media === ifDefaultMedia(p) && oit.media && oit.media !== nit.media)
+          nit.media = oit.media;
+        if (!nit.desc && oit.desc) nit.desc = oit.desc;
+      }
+      state.devices[i] = dev; replaced++;
+    } else { state.devices.push(dev); added++; }
+  }
+  const n = inferLinksFromDescriptions();
+  toast(`解析完了: 追加${added} / 更新${replaced} 台、description から接続 ${n} 本を推定`);
+  renderAll();
+}
+
+// ---------------- link inference ----------------
+function linkKey(l){
+  const p = [l.a.dev + '|' + l.a.port, l.b.dev + '|' + l.b.port].sort();
+  return p.join('#');
+}
+function linkExists(a, b){
+  const k = linkKey({ a, b });
+  return state.links.some(l => linkKey(l) === k);
+}
+function decideMedia(a, b){
+  const ma = ifMedia(a.dev, a.port), mb = ifMedia(b.dev, b.port);
+  if (ma === 'fiber' || mb === 'fiber') return 'fiber';
+  if (ma === 'utp' || mb === 'utp') return 'utp';
+  return 'unknown';
+}
+function ifMedia(devId, port){
+  const d = devById(devId);
+  return d?.interfaces[port]?.media || ifDefaultMedia(port);
+}
+const IF_TOKEN_RE = /\b(hundredgige|fortygige|twentyfivegige|tengigabitethernet|tengige|tengiga|tengig|twogigabitethernet|gigabitethernet|gigabit|gige|giga|fastethernet|fasteth|fast|port-channel|ethernet|hu|fo|twe|te|tw|gig|gi|ge|fas|fa|po|eth|g|t|f|e)\s*[-_:]?\s*(\d+(?:\/\d+)*(?:\.\d+)?)/i;
+
+function escRe(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+// descに書かれた相手ポート名をコンフィグの実在ポートへ正規化する。
+// 完全一致 > 末尾一致(例: G0/27 -> Gi1/0/27 スタック番号の省略) 。一意でなければ null
+function resolveRemotePort(nb, rport){
+  if (nb.interfaces[rport]) return rport;
+  const m = String(rport).match(/^([A-Za-z-]+)([\d/.:]+)$/);
+  if (!m) return null;
+  const type = m[1], nums = m[2];
+  const cands = Object.keys(nb.interfaces).filter(p => {
+    if (!p.startsWith(type)) return false;
+    const pn = p.slice(type.length);
+    return pn === nums || pn.endsWith('/' + nums);
+  });
+  return cands.length === 1 ? cands[0] : null;
+}
+function inferLinksFromDescriptions(){
+  let count = 0;
+  const byLen = [...state.devices].sort((a, b) => b.hostname.length - a.hostname.length);
+  const existing = new Set(state.links.map(linkKey));
+  // 1ポート1ケーブル: 既存リンクで使用中のポート
+  const used = new Set();
+  state.links.forEach(l => { used.add(l.a.dev + '|' + l.a.port); used.add(l.b.dev + '|' + l.b.port); });
+
+  // まず候補を集める(即pushしない)
+  const cands = [];
+  for (const dev of state.devices){
+    for (const [port, it] of Object.entries(dev.interfaces)){
+      if (!it.desc || !isPhysicalIf(port)) continue;
+      const desc = it.desc;
+      const nb = byLen.find(d => d.id !== dev.id && new RegExp(escRe(d.hostname), 'i').test(desc));
+      if (!nb) continue;
+      const idx = desc.toLowerCase().indexOf(nb.hostname.toLowerCase());
+      const after = desc.slice(idx + nb.hostname.length);
+      let rport = null;
+      if (nb.custom){ // 手動オブジェクト: そのポート名をdescription内から探す
+        const pnames = Object.keys(nb.interfaces).sort((a, b) => b.length - a.length);
+        for (const pn of pnames){
+          const re = new RegExp(escRe(pn), 'i');
+          if (re.test(after) || re.test(desc)){ rport = pn; break; }
+        }
+        if (!rport && pnames.length === 1) rport = pnames[0];
+        if (!rport) continue;
+      } else {
+        const tm = after.match(IF_TOKEN_RE) || desc.match(IF_TOKEN_RE);
+        if (!tm) continue;
+        rport = canonIf(tm[1] + tm[2]);
+        if (!rport || !isPhysicalIf(rport)) continue;
+        if (Object.keys(nb.interfaces).length){
+          rport = resolveRemotePort(nb, rport); // 実在ポートへ正規化(0/27→1/0/27等)
+          if (!rport) continue;
+        }
+      }
+      const a = { dev: dev.id, port }, b = { dev: nb.id, port: rport };
+      // 相互参照スコア: 相手ポートのdescがこちらを指し返していれば強い(=2)
+      let score = 1;
+      const rdesc = (nb.interfaces[rport] && nb.interfaces[rport].desc) || '';
+      if (rdesc){
+        if (new RegExp(escRe(dev.hostname), 'i').test(rdesc)) score = 2;
+        else {
+          const words = rdesc.split(/[^A-Za-z0-9_-]+/).filter(w => w.length >= 6);
+          if (words.some(w => editDist(w, dev.hostname, 2) <= 2)) score = 2; // 誤記許容
+        }
+      }
+      cands.push({ a, b, k: linkKey({ a, b }), score });
+    }
+  }
+  // 相互参照の強いペアから採用。ポートが埋まったら以降の主張は破棄
+  cands.sort((x, y) => y.score - x.score);
+  for (const c of cands){
+    if (existing.has(c.k)) continue;
+    const ka = c.a.dev + '|' + c.a.port, kb = c.b.dev + '|' + c.b.port;
+    if (used.has(ka) || used.has(kb)) continue;
+    existing.add(c.k); used.add(ka); used.add(kb);
+    state.links.push({ id: uid(), a: c.a, b: c.b, media: decideMedia(c.a, c.b), source: 'desc' });
+    count++;
+  }
+  count += inferLinksFromPoDescriptions(existing, byLen);
+  return count;
+}
+
+// Port-channelのdescriptionが相手を指している場合、メンバーポート同士を対応付ける
+// (物理ポートのdescriptionが誤記されているケースの救済)
+function inferLinksFromPoDescriptions(existing, byLen){
+  let count = 0;
+  const natSort = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+  for (const dev of state.devices){
+    for (const [poIf, it] of Object.entries(dev.interfaces)){
+      const pm = poIf.match(/^Port-channel(\d+)$/);
+      if (!pm || !it.desc) continue;
+      const n = +pm[1];
+      const nb = byLen.find(d => d.id !== dev.id &&
+        new RegExp(d.hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(it.desc));
+      if (!nb) continue;
+      // 相手側のPo番号: desc内のPoトークン、なければ相互参照から探す
+      let q = null;
+      const idx = it.desc.toLowerCase().indexOf(nb.hostname.toLowerCase());
+      const after = it.desc.slice(idx + nb.hostname.length);
+      const tm = after.match(IF_TOKEN_RE) || it.desc.match(IF_TOKEN_RE);
+      if (tm){
+        const rp = canonIf(tm[1] + tm[2]);
+        const qm = rp && rp.match(/^Port-channel(\d+)$/);
+        if (qm) q = +qm[1];
+      }
+      if (q === null){
+        for (const [p2, it2] of Object.entries(nb.interfaces)){
+          const pm2 = p2.match(/^Port-channel(\d+)$/);
+          if (pm2 && it2.desc &&
+            new RegExp(dev.hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(it2.desc)){
+            q = +pm2[1]; break;
+          }
+        }
+      }
+      if (q === null) continue;
+      const aM = Object.entries(dev.interfaces)
+        .filter(([p, x]) => isPhysicalIf(p) && x.channelGroup === n).map(([p]) => p).sort(natSort);
+      const bM = Object.entries(nb.interfaces)
+        .filter(([p, x]) => isPhysicalIf(p) && x.channelGroup === q).map(([p]) => p).sort(natSort);
+      const m = Math.min(aM.length, bM.length);
+      for (let i = 0; i < m; i++){
+        const a = { dev: dev.id, port: aM[i] }, b = { dev: nb.id, port: bM[i] };
+        const k = linkKey({ a, b });
+        if (existing.has(k)) continue;
+        // 既にどちらかのポートに別リンクが付いていたらスキップ(誤上書き防止)
+        if (state.links.some(l =>
+          (l.a.dev === a.dev && l.a.port === a.port) || (l.b.dev === a.dev && l.b.port === a.port) ||
+          (l.a.dev === b.dev && l.a.port === b.port) || (l.b.dev === b.dev && l.b.port === b.port))) continue;
+        existing.add(k);
+        state.links.push({ id: uid(), a, b, media: decideMedia(a, b), source: 'desc' });
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+// ---- 未解決description(接続候補)の検出 ----
+function editDist(a, b, cap = 3){
+  a = a.toLowerCase(); b = b.toLowerCase();
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let jj = 1; jj <= b.length; jj++) dp[0][jj] = jj;
+  for (let i = 1; i <= a.length; i++)
+    for (let jj = 1; jj <= b.length; jj++)
+      dp[i][jj] = Math.min(dp[i-1][jj] + 1, dp[i][jj-1] + 1, dp[i-1][jj-1] + (a[i-1] === b[jj-1] ? 0 : 1));
+  return dp[a.length][b.length];
+}
+function unresolvedDescs(){
+  const rows = [];
+  const linked = new Set();
+  state.links.forEach(l => { linked.add(l.a.dev + '|' + l.a.port); linked.add(l.b.dev + '|' + l.b.port); });
+  for (const dev of state.devices){
+    for (const [port, it] of Object.entries(dev.interfaces)){
+      if (!isPhysicalIf(port) || !it.desc || it.shutdown) continue;
+      if (linked.has(dev.id + '|' + port)) continue;
+      const tm = it.desc.match(IF_TOKEN_RE);
+      if (!tm) continue; // ネイバー参照の形をしていないdescは対象外
+      const rport = canonIf(tm[1] + tm[2]);
+      // 完全一致で機器が見つかるか
+      let cand = state.devices.find(d => d.id !== dev.id &&
+        new RegExp(d.hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(it.desc));
+      let dist = cand ? 0 : null;
+      if (!cand){ // 曖昧一致: descの単語と機器名の編集距離
+        const words = it.desc.split(/[^A-Za-z0-9_-]+/).filter(w => w.length >= 6);
+        let best = null, bestD = 3;
+        for (const w of words){
+          for (const d of state.devices){
+            if (d.id === dev.id) continue;
+            const dd = editDist(w, d.hostname, bestD);
+            if (dd <= bestD && (best === null || dd < bestD)){ best = d; bestD = dd; }
+          }
+        }
+        cand = best; dist = best ? bestD : null;
+      }
+      rows.push({ dev, port, desc: it.desc, cand, dist, rport });
+    }
+  }
+  return rows;
+}
+
+function mediaFromTypeStr(ty){
+  if (!ty) return null;
+  if (/(-|\b)tx\b|base-?te?\b|10\/100|rj-?45|copper/i.test(ty)) return 'utp';
+  if (/dac|twinax/i.test(ty)) return 'dac';
+  if (/base-?[sl][xhr]|base-?zx|base-?fx|base-?[sel]r\b|sfp|gbic|xcvr|fiber/i.test(ty)) return 'fiber';
+  return null;
+}
+// show interface status の取り込み: Type列から媒体を判定して更新
+function importIfStatus(text, fallbackDevId){
+  const segs = [];
+  let cur = { dev: null, lines: [] };
+  for (const raw of text.replace(/\r/g, '').split('\n')){
+    const pm = raw.match(/^([A-Za-z0-9._-]+)[#>]\s*sh(?:ow)?\s+int/i);
+    if (pm){ if (cur.lines.length || cur.dev) segs.push(cur); cur = { dev: pm[1], lines: [] }; }
+    else cur.lines.push(raw);
+  }
+  segs.push(cur);
+  let updDev = 0, updIf = 0, madeDesc = 0;
+  const touched = new Set();
+  for (const seg of segs){
+    let dev = seg.dev ? state.devices.find(d => d.hostname.toLowerCase() === seg.dev.toLowerCase()) : null;
+    if (!dev && fallbackDevId) dev = devById(fallbackDevId);
+    if (!dev) continue;
+    let any = false;
+    for (const line of seg.lines){
+      const m = line.match(/^(\S+)\s+(.*?)(connected|notconnect|disabled|err-disabled|inactive|suspended|monitoring)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)$/i);
+      if (!m) continue;
+      const port = canonIf(m[1]);
+      if (!port || !isPhysicalIf(port)) continue;
+      const name = m[2].trim();
+      const status = m[3].toLowerCase();
+      const ty = (m[7] || '').trim();
+      const it = dev.interfaces[port] || (dev.interfaces[port] = newIfEntry(ifDefaultMedia(port)));
+      const med = mediaFromTypeStr(ty);
+      if (med && it.media !== med){ it.media = med; updIf++; }
+      if (status === 'disabled') it.shutdown = true;
+      if (name && !it.desc){ it.desc = name; madeDesc++; }
+      any = true;
+    }
+    if (any){ updDev++; touched.add(dev.id); }
+  }
+  // 更新した機器に接続するリンクの媒体を再判定
+  let updLinks = 0;
+  for (const l of state.links){
+    if (touched.has(l.a.dev) || touched.has(l.b.dev)){
+      const nm = decideMedia(l.a, l.b);
+      if (nm !== 'unknown' && nm !== l.media){ l.media = nm; updLinks++; }
+    }
+  }
+  if (!updDev) toast('対象機器が見つかりません。プロンプト行(hostname#show int status)を含めるか、機器を選択してください');
+  else toast(`取込完了: ${updDev}台 / 媒体更新 ${updIf}ポート / リンク再判定 ${updLinks}本` + (madeDesc ? ` / desc補完 ${madeDesc}件` : ''));
+  renderAll();
+}
+
+// ---------------- 末端機器(MACテーブル/ARP)取込 ----------------
+const EDGE_MAX_MACS = 12; // これを超えるMACを学習しているポートはアップリンク等とみなし除外
+const OUI_MAP = {         // 代表的なOUIのみ(誤判定を避けるため著名なものに限定)
+  '005056': ['VMware', 'server'], '000c29': ['VMware', 'server'],
+  '000569': ['VMware', 'server'], '001c14': ['VMware', 'server'],
+  '00155d': ['Hyper-V', 'server'], '525400': ['KVM/QEMU', 'server'],
+  '0000aa': ['Xerox', 'printer'], '9c934e': ['Xerox', 'printer'],
+  '000048': ['EPSON', 'printer'], '008077': ['Brother', 'printer'],
+  '002673': ['RICOH', 'printer'], '001e8f': ['Canon', 'printer'],
+};
+const macOui = mac => mac.replace(/[.\-:]/g, '').slice(0, 6).toLowerCase();
+function vlanNameOf(v){
+  for (const d of state.devices){ const n = (d.vlans || {})[v]; if (n) return n; }
+  return '';
+}
+// 個々のMAC(端末)の種別を推定
+function classifyHost(mac, vlan, desc){
+  const oui = OUI_MAP[macOui(mac)];
+  if (oui) return { type: oui[1], vendor: oui[0] };
+  const texts = [(desc || ''), vlanNameOf(vlan)].join(' ');
+  if (/prn|print|プリンタ|複合機|mfp/i.test(texts)) return { type: 'printer', vendor: '' };
+  if (/srv|server|サーバ|esxi?|vm(ware)?|hyper/i.test(texts)) return { type: 'server', vendor: '' };
+  if (/wlan|wi-?fi|air|無線|(^|[^a-z])ap([^a-z]|$)/i.test(texts)) return { type: 'ap', vendor: '' };
+  if (/tel|phone|pbx|voice|電話/i.test(texts)) return { type: 'phone', vendor: '' };
+  if (/cam|カメラ|nvr/i.test(texts)) return { type: 'other', vendor: '' };
+  return { type: 'pc', vendor: '' };
+}
+const MAC_RE = /^[0-9a-fA-F]{4}\.[0-9a-fA-F]{4}\.[0-9a-fA-F]{4}$/;
+// show mac address-table / show (ip) arp の貼り付け取込
+function importMacArp(text, fallbackDevId){
+  const segs = [];
+  let cur = { dev: null, lines: [] };
+  for (const raw of text.replace(/\r/g, '').split('\n')){
+    const pm = raw.match(/^([A-Za-z0-9._-]+)[#>]\s*sh(?:ow)?\s+(mac|ip\s+arp|arp)/i);
+    if (pm){ if (cur.lines.length || cur.dev) segs.push(cur); cur = { dev: pm[1], lines: [] }; }
+    else cur.lines.push(raw);
+  }
+  segs.push(cur);
+  let nMac = 0, nArp = 0; const touched = new Set();
+  for (const seg of segs){
+    let dev = seg.dev ? state.devices.find(d => d.hostname.toLowerCase() === seg.dev.toLowerCase()) : null;
+    if (!dev && fallbackDevId) dev = devById(fallbackDevId);
+    for (const line of seg.lines){
+      const t = line.trim().split(/\s+/);
+      // ARP行: Internet 192.168.30.45  5  0011.2233.4455 ARPA Vlan30
+      if (t[0] === 'Internet' && t.length >= 4){
+        const ip = t[1], mac = t.find(x => MAC_RE.test(x));
+        if (mac && /^\d+\.\d+\.\d+\.\d+$/.test(ip)){ state.arp[mac.toLowerCase()] = ip; nArp++; }
+        continue;
+      }
+      // MACテーブル行: 10  0011.2233.4455  DYNAMIC  Gi1/0/5 (列数のゆらぎに対応)
+      const mi = t.findIndex(x => MAC_RE.test(x));
+      if (mi < 1 || !dev) continue;
+      const vlan = parseInt(t[mi - 1], 10);
+      if (!Number.isFinite(vlan)) continue;
+      const portRaw = t[t.length - 1];
+      if (/^(CPU|Switch|Router|Drop|Vl\d+|Vlan\d+)$/i.test(portRaw)) continue;
+      const port = canonIf(portRaw);
+      if (!port) continue;
+      const it = dev.interfaces[port] || (dev.interfaces[port] = newIfEntry(ifDefaultMedia(port)));
+      it.macs = it.macs || [];
+      const mac = t[mi].toLowerCase();
+      if (!it.macs.some(m => m.mac === mac)) it.macs.push({ mac, vlan });
+      it.macCount = it.macs.length;
+      it.macSample = it.macs.slice(0, 3).map(m => m.mac);
+      touched.add(dev.id); nMac++;
+    }
+  }
+  return { nMac, nArp, nDev: touched.size };
+}
+// 末端機器グループ(スイッチ×種別ごとに集約)の自動生成
+function generateEdgeDevices(){
+  // 既存の自動生成グループを一旦除去(位置は引き継ぐ)
+  const oldPos = {};
+  for (const d of state.devices)
+    if (d.autoEdge) oldPos[d.autoEdge.sw + ':' + d.autoEdge.type] =
+      { pos: d.pos, physPos: d.physPos, l3Pos: d.l3Pos, color: d.color };
+  const oldIds = new Set(state.devices.filter(d => d.autoEdge).map(d => d.id));
+  state.devices = state.devices.filter(d => !d.autoEdge);
+  state.links = state.links.filter(l => !oldIds.has(l.a.dev) && !oldIds.has(l.b.dev));
+  // 配線済みポート(両端)は末端候補から除外
+  const linked = new Set();
+  for (const l of state.links){ linked.add(l.a.dev + '|' + l.a.port); linked.add(l.b.dev + '|' + l.b.port); }
+  let nGroups = 0, nHosts = 0, nSkipUplink = 0;
+  for (const sw of state.devices.filter(d => !d.custom)){
+    const byType = {};
+    for (const [port, it] of Object.entries(sw.interfaces)){
+      if (!(it.macs || []).length) continue;
+      if (linked.has(sw.id + '|' + port)) continue;              // 既知の配線(機器間リンク)
+      if (it.channelGroup) continue;                             // Poメンバー(実体はPo側)
+      if (it.macs.length > EDGE_MAX_MACS){ nSkipUplink++; continue; } // 多数学習=アップリンクの可能性
+      for (const m of it.macs){
+        const c = classifyHost(m.mac, m.vlan, it.desc);
+        (byType[c.type] = byType[c.type] || []).push(
+          { port, mac: m.mac, vlan: m.vlan, ip: state.arp[m.mac] || '', vendor: c.vendor });
+      }
+    }
+    const types = Object.keys(byType);
+    types.forEach((t, i) => {
+      const hosts = byType[t];
+      const ct = CTYPES[t] || CTYPES.other;
+      const g = makeCustomDevice(`${ct.chip}×${hosts.length}`, t, ['LAN'], '');
+      g.autoEdge = { sw: sw.id, type: t, hosts };
+      g.mgmtIp = '↳ ' + sw.hostname;
+      const vl = [...new Set(hosts.map(h => h.vlan))].sort((a, b) => a - b);
+      g.interfaces['LAN'].mode = 'trunk';
+      g.interfaces['LAN'].trunkVlans = vl;
+      const keep = oldPos[sw.id + ':' + t];
+      const off = i - (types.length - 1) / 2;
+      g.pos = keep?.pos || (sw.pos ? { x: sw.pos.x + off * 215, y: sw.pos.y + 165 } : null);
+      g.physPos = keep?.physPos || (sw.physPos ? { x: sw.physPos.x + off * 215, y: sw.physPos.y + 165 } : null);
+      if (keep?.l3Pos) g.l3Pos = keep.l3Pos;
+      if (keep?.color) g.color = keep.color;
+      g.location = sw.location || '';
+      state.devices.push(g);
+      state.links.push({ a: { dev: sw.id, port: [...new Set(hosts.map(h => h.port))].length + 'ポート' },
+        b: { dev: g.id, port: 'LAN' }, media: 'utp', edge: true });
+      nGroups++; nHosts += hosts.length;
+    });
+  }
+  return { nGroups, nHosts, nSkipUplink };
+}
+
+function parseCdp(text, fromDevId){
+  const dev = devById(fromDevId);
+  if (!dev){ toast('CDP出力元の機器を選択してください'); return; }
+  let count = 0;
+  for (const block of text.split(/-{5,}/)){
+    const dm = block.match(/Device ID:\s*(\S+)/i);
+    const im = block.match(/Interface:\s*([^\s,]+)/i);
+    const pm = block.match(/Port ID \(outgoing port\):\s*(\S+)/i);
+    if (!dm || !im || !pm) continue;
+    const nbName = dm[1].split('.')[0];
+    const nb = state.devices.find(d => d.hostname.toLowerCase() === nbName.toLowerCase());
+    if (!nb) continue;
+    const lp = canonIf(im[1]), rp = canonIf(pm[1]);
+    if (!lp || !rp) continue;
+    const a = { dev: dev.id, port: lp }, b = { dev: nb.id, port: rp };
+    if (linkExists(a, b)) continue;
+    state.links.push({ id: uid(), a, b, media: decideMedia(a, b), source: 'cdp' });
+    count++;
+  }
+  toast(`CDP解析: 接続 ${count} 本を追加`);
+  renderAll();
+}
+
+// ---------------- STP root ----------------
+function stpRoots(){
+  const map = {};
+  const vlanSet = new Set();
+  state.devices.forEach(d => Object.keys(d.vlans).forEach(v => vlanSet.add(+v)));
+  state.devices.forEach(d => Object.keys(d.stp.priorities).forEach(v => vlanSet.add(+v)));
+  for (const v of vlanSet){
+    let best = null, bestPri = Infinity, configured = false;
+    for (const d of state.devices){
+      const pri = d.stp.priorities[v] ?? 32768;
+      if (d.stp.priorities[v] !== undefined) configured = true;
+      if (pri < bestPri){ bestPri = pri; best = d; }
+    }
+    if (best && configured && bestPri < 32768)
+      (map[best.id] = map[best.id] || []).push(v);
+  }
+  return map;
+}
+
+// ---------------- device attribute helpers ----------------
+function devKind(d){
+  if (d.custom) return 'custom';
+  const hasSw = Object.values(d.interfaces).some(it => it.mode === 'access' || it.mode === 'trunk')
+    || Object.keys(d.vlans).length > 0;
+  const hasIp = Object.values(d.interfaces).some(it => it.ip);
+  if (!hasSw && hasIp) return 'router';
+  return d.isL3 ? 'l3sw' : 'sw';
+}
+function stackCount(d){ return Object.keys(d.stack || {}).length; }
+function routingStr(d){
+  const parts = [...(d.routing || [])];
+  if (d.staticRoutes) parts.push('Static×' + d.staticRoutes);
+  return parts.join(', ');
+}
+function kindLabel(d){
+  const k = devKind(d);
+  if (k === 'custom') return (CTYPES[d.ctype] || CTYPES.other).label;
+  const sc = stackCount(d);
+  const suf = sc > 1 ? `(スタック${sc}台)` : '';
+  if (d.dispType && CTYPES[d.dispType]) return CTYPES[d.dispType].label + suf;
+  const kk = ['router','l3sw','sw'].includes(d.dispType) ? d.dispType : k;
+  const base = kk === 'router' ? 'ルーター' : kk === 'l3sw' ? 'L3スイッチ' : 'L2スイッチ';
+  return base + suf;
+}
+function dot1qVlansOf(devId, port){
+  const d = devById(devId); if (!d) return [];
+  const out = [];
+  for (const [p, it] of Object.entries(d.interfaces))
+    if (it.dot1q && p.startsWith(port + '.')) out.push(it.dot1q);
+  return out;
+}
+function maskToPrefix(mask){
+  return String(mask).split('.').reduce((a, o) => a + ((+o).toString(2).match(/1/g) || []).length, 0);
+}
+function ipDisp(ipmask){
+  const m = String(ipmask).match(/^(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)(.*)$/);
+  if (!m) return ipmask;
+  return m[1] + '/' + maskToPrefix(m[2]) + (m[3] || '');
+}
+
+// ---------------- L3ビュー: セグメントモデル ----------------
+function ipToInt(ip){ return String(ip).split('.').reduce((a, o) => a * 256 + (+o), 0); }
+function parseIpMask(s){
+  const m = String(s || '').match(/^(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)/);
+  if (!m) return null;
+  const prefix = maskToPrefix(m[2]);
+  const ipInt = ipToInt(m[1]);
+  const maskInt = prefix === 0 ? 0 : ((0xFFFFFFFF << (32 - prefix)) >>> 0);
+  const netInt = (ipInt & maskInt) >>> 0;
+  const net = [24, 16, 8, 0].map(sh => (netInt >>> sh) & 255).join('.');
+  return { ip: m[1], prefix, net, key: net + '/' + prefix };
+}
+const SEG_PALETTE = ['#3E7CB1','#4E8A5A','#B8860B','#7C5CBF','#C05A5A','#2AA198','#B0713A','#5A7CC0','#8A6D3B','#5F8575'];
+function segColor(key){
+  let h = 0;
+  for (const c of String(key)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return SEG_PALETTE[h % SEG_PALETTE.length];
+}
+function tint(hex, t){ // t=0..1 白方向に薄める
+  const m = String(hex).match(/^#([0-9a-f]{6})$/i);
+  if (!m) return '#F2F6FA';
+  const n = parseInt(m[1], 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+  const f = c => Math.round(c + (255 - c) * t).toString(16).padStart(2, '0');
+  return '#' + f(r) + f(g) + f(b);
+}
+// 全機器のIP付きインターフェースからサブネット(セグメント)を集計。
+// 2台のみが属し SVI/FHRP が無い(または/30以上の)サブネットは「ルーテッドP2P」として直結線扱い。
+function buildL3Model(){
+  const segMap = {};
+  for (const d of state.devices){
+    for (const [p, it] of Object.entries(d.interfaces || {})){
+      if (/^Loopback/.test(p)) continue;       // Loopbackはセグメントとして扱わない
+      if (it.shutdown) continue;
+      const list = (it.ips && it.ips.length) ? it.ips : (it.ip ? [it.ip] : []);
+      for (const raw of list){
+        const pm = parseIpMask(raw);
+        if (!pm || pm.prefix >= 32) continue;
+        const vm = p.match(/^Vlan(\d+)$/);
+        const vlan = vm ? +vm[1] : (it.dot1q || null);
+        const seg = segMap[pm.key] = segMap[pm.key] ||
+          { key: pm.key, net: pm.net, prefix: pm.prefix, members: [], vlans: new Set(), vips: [], svi: false };
+        if (!seg.members.some(m => m.dev === d.id && m.port === p))
+          seg.members.push({ dev: d.id, port: p, ip: pm.ip, host: pm.ip.split('.').pop() });
+        if (vlan != null) seg.vlans.add(vlan);
+        if (vm) seg.svi = true;
+        for (const f of it.fhrp || [])
+          if (f.vip && !seg.vips.some(v => v.vip === f.vip)) seg.vips.push({ vip: f.vip, type: f.type });
+      }
+    }
+  }
+  const segs = [], transits = [];
+  for (const seg of Object.values(segMap)){
+    seg.vlanList = [...seg.vlans].sort((a, b) => a - b);
+    seg.name = '';
+    for (const v of seg.vlanList){
+      const n = state.devices.map(d => d.vlans[v]).find(Boolean);
+      if (n){ seg.name = n; break; }
+    }
+    const twoDevs = seg.members.length === 2 && seg.members[0].dev !== seg.members[1].dev;
+    if (twoDevs && (seg.prefix >= 30 || (!seg.svi && !seg.vips.length))) transits.push(seg);
+    else segs.push(seg);
+  }
+  segs.sort((a, b) => ipToInt(a.net) - ipToInt(b.net) || a.prefix - b.prefix);
+  const l3Ids = new Set();
+  const segCount = {};
+  Object.values(segMap).forEach(s => s.members.forEach(m => {
+    l3Ids.add(m.dev);
+    (segCount[m.dev] = segCount[m.dev] || new Set()).add(s.key);
+  }));
+  // 「本当にルーティングしている機器」: 2つ以上のセグメントに属する / ip routing / ルーティングプロトコル / static route。
+  // 管理用SVIを1つ持つだけのL2スイッチはここに含めない(L2重ね表示でのみ表示)
+  const routerIds = new Set();
+  for (const d of state.devices){
+    const n = (segCount[d.id] || new Set()).size;
+    if (n >= 2 || (n >= 1 && (d.isL3 || (d.routing || []).length || d.staticRoutes)))
+      routerIds.add(d.id);
+  }
+  // ルーテッドP2Pの両端はL3機器として扱う(FWアプライアンス等、対向設定のみの機器を含む)
+  transits.forEach(t => t.members.forEach(m => routerIds.add(m.dev)));
+  return { segs, transits, l3Ids, routerIds };
+}
+// L3図に表示する機器: IPを持つ機器 + それに直結する手動追加オブジェクト(WAN雲/FWアプライアンス等)。
+// 「L2重ね表示」ONならすべて表示。
+function l3VisibleDevices(model){
+  if (state.showL2) return state.devices;
+  const shown = new Set(model.routerIds);
+  for (const l of state.links){
+    const dA = devById(l.a.dev), dB = devById(l.b.dev);
+    if (!dA || !dB) continue;
+    if (shown.has(dA.id) && dB.custom) shown.add(dB.id);
+    if (shown.has(dB.id) && dA.custom) shown.add(dA.id);
+  }
+  return state.devices.filter(d => shown.has(d.id));
+}
+let L3M = null, L3_SHOWN = [];
+const SEG_ELS = new Map();
+function segPos(seg){ return state.l3SegPos[seg.key] || { x: 100, y: 100 }; }
+function segNodeLines(seg){
+  const l1 = seg.net + '/' + seg.prefix + (seg.members.length >= 3 ? `　接続${seg.members.length}台` : '');
+  const l2 = seg.vlanList.length
+    ? 'VLAN ' + seg.vlanList.join(',') + (seg.name ? ' (' + seg.name + ')' : '')
+    : (seg.members.length <= 1 ? '外部/スタブ' : '');
+  const l3 = seg.vips.length ? 'VIP ' + seg.vips.map(v => `${v.vip}(${v.type})`).join(' ') : '';
+  return [l1, l2, l3].filter(Boolean);
+}
+function segSize(seg){
+  const lines = segNodeLines(seg);
+  const w = Math.min(360, Math.max(150, Math.max(...lines.map(l => textUnits(l))) * 6.6 + 30));
+  return { w, h: lines.length * 15 + 16, lines };
+}
+function segDimmed(seg){
+  if (state.vlanFilter !== ''){
+    if (!seg.vlanList.includes(+state.vlanFilter)) return true;
+  }
+  if (state.search.trim()){
+    const s = state.search.trim().toLowerCase();
+    const direct = seg.key.includes(s) ||
+      seg.members.some(m => m.ip && m.ip.includes(s)) ||
+      seg.vips.some(v => v.vip && v.vip.includes(s));
+    const viaDev = seg.members.some(m => {
+      const d = devById(m.dev);
+      return d && !devDimmed(d) && d.hostname.toLowerCase().includes(s);
+    });
+    if (!direct && !viaDev) return true;
+  }
+  return false;
+}
+function transitDimmed(t, dA, dB){
+  if (state.vlanFilter !== ''){
+    if (t.vlanList.includes(+state.vlanFilter)) return false;
+    return devDimmed(dA) || devDimmed(dB);
+  }
+  if (state.search.trim()){
+    const s = state.search.trim().toLowerCase();
+    const direct = t.key.includes(s) || t.members.some(m => m.ip && m.ip.includes(s));
+    const viaDev = [dA, dB].some(d => d && !devDimmed(d) && d.hostname.toLowerCase().includes(s));
+    if (!direct && !viaDev) return true;
+  }
+  return false;
+}
+// 位置の初期化: 機器は論理図の配置を引き継ぎ、セグメントは接続機器の下に自動配置
+function ensureL3Positions(){
+  if (!L3M) return;
+  for (const d of L3_SHOWN)
+    if (!d.l3Pos) d.l3Pos = d.pos ? { ...d.pos } : { x: 100, y: 100 };
+  const rects = [];
+  for (const seg of L3M.segs){
+    const p = state.l3SegPos[seg.key];
+    if (p){ const s = segSize(seg); rects.push({ x: p.x, y: p.y, w: s.w + 26, h: s.h + 20 }); }
+  }
+  const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  for (const seg of L3M.segs){
+    if (state.l3SegPos[seg.key]) continue;
+    const s = segSize(seg);
+    let mems = seg.members.map(m => devById(m.dev)).filter(d => d && d.l3Pos);
+    const rt = mems.filter(d => L3M.routerIds.has(d.id) || d.custom);
+    if (rt.length) mems = rt; // 配置の基準はルーティング機器を優先(管理SVIのみの機器に引っ張られない)
+    const pts = mems.map(d => ({ x: d.l3Pos.x + NODE_W / 2, y: d.l3Pos.y + NODE_H / 2 }));
+    let x = 100, y = 100;
+    if (pts.length){
+      x = pts.reduce((a, p) => a + p.x, 0) / pts.length - s.w / 2;
+      y = Math.max(...pts.map(p => p.y)) + 110;
+    }
+    let guard = 0;
+    const r = { x, y, w: s.w + 26, h: s.h + 20 };
+    while (guard++ < 300 && rects.some(o => overlap(o, r))){
+      r.x += 44;
+      if (guard % 24 === 0){ r.x = Math.max(10, x - 200); r.y += s.h + 26; }
+    }
+    state.l3SegPos[seg.key] = { x: Math.max(10, r.x), y: Math.max(34, r.y) };
+    rects.push(r);
+  }
+}
+// L3自動配置: ルーテッドP2P/共有セグメント/物理リンクをエッジとして階層化
+function l3AutoLayout(){
+  const model = buildL3Model();
+  L3M = model; L3_SHOWN = l3VisibleDevices(model);
+  const devs = L3_SHOWN.filter(d => model.routerIds.has(d.id) || d.custom);
+  if (!devs.length){ toast('IPアドレスを持つ機器がありません(L3図に表示する対象がありません)'); return; }
+  const idSet = new Set(devs.map(d => d.id));
+  const edges = [];
+  model.transits.forEach(s => edges.push([s.members[0].dev, s.members[1].dev]));
+  model.segs.forEach(s => {
+    for (let i = 0; i < s.members.length; i++)
+      for (let j = i + 1; j < s.members.length; j++)
+        edges.push([s.members[i].dev, s.members[j].dev]);
+  });
+  state.links.forEach(l => {
+    const dA = devById(l.a.dev), dB = devById(l.b.dev);
+    if (dA && dB && (dA.custom || dB.custom)) edges.push([dA.id, dB.id]);
+  });
+  const deg = {};
+  edges.forEach(([a, b]) => { deg[a] = (deg[a] || 0) + 1; deg[b] = (deg[b] || 0) + 1; });
+  const score = d => (d.custom && d.ctype === 'wan' ? 1000 : 0) +
+    ((d.routing || []).some(r => /bgp/i.test(r)) ? 500 : 0) + (deg[d.id] || 0);
+  const sorted = [...devs].sort((a, b) => score(b) - score(a));
+  const tier = {}, q = [];
+  sorted.forEach(d => { if (d.custom && d.ctype === 'wan'){ tier[d.id] = 0; q.push(d.id); } });
+  if (!q.length && sorted[0]){ tier[sorted[0].id] = 0; q.push(sorted[0].id); }
+  while (q.length){
+    const cur = q.shift();
+    for (const [a, b] of edges){
+      const o = a === cur ? b : (b === cur ? a : null);
+      if (o && tier[o] === undefined && idSet.has(o)){ tier[o] = tier[cur] + 1; q.push(o); }
+    }
+  }
+  devs.forEach(d => { if (tier[d.id] === undefined) tier[d.id] = 1; });
+  const byTier = {};
+  devs.forEach(d => (byTier[tier[d.id]] = byTier[tier[d.id]] || []).push(d));
+  const perRow = Math.min(10, Math.max(4, Math.ceil(Math.sqrt(devs.length * 1.6))));
+  let y = 90;
+  for (const t of Object.keys(byTier).map(Number).sort((a, b) => a - b)){
+    const arr = byTier[t].sort((a, b) => (deg[b.id] || 0) - (deg[a.id] || 0));
+    arr.forEach((d, i) => {
+      const r = Math.floor(i / perRow), c = i % perRow;
+      d.l3Pos = { x: 120 + c * 260 + (r % 2) * 50, y: y + r * 140 };
+    });
+    y += Math.ceil(arr.length / perRow) * 140 + 200; // セグメント用の余白を確保
+  }
+  // セグメントは付け直し
+  model.segs.forEach(s => delete state.l3SegPos[s.key]);
+  renderCanvas();
+  fitView();
+  scheduleAutosave();
+  toast('L3自動配置を実行しました(セグメントは接続機器の近くに再配置)');
+}
+
+// ---------------- layout (大規模対応: 段内折り返し) ----------------
+function autoLayout(){
+  const roots = stpRoots();
+  const degree = d => state.links.filter(l => l.a.dev === d.id || l.b.dev === d.id).length;
+  const score = d => (roots[d.id] ? 1000 : 0) + (d.isL3 ? 100 : 0) + degree(d);
+  const sorted = [...state.devices].sort((a,b) => score(b) - score(a));
+  const tier = {}; const q = [];
+  sorted.forEach(d => { if (roots[d.id] || d.isL3){ tier[d.id] = 0; q.push(d.id); } });
+  if (!q.length && sorted[0]){ tier[sorted[0].id] = 0; q.push(sorted[0].id); }
+  while (q.length){
+    const cur = q.shift();
+    for (const l of state.links){
+      const other = l.a.dev === cur ? l.b.dev : (l.b.dev === cur ? l.a.dev : null);
+      if (other && tier[other] === undefined){ tier[other] = tier[cur] + 1; q.push(other); }
+    }
+  }
+  state.devices.forEach(d => { if (tier[d.id] === undefined) tier[d.id] = 2; });
+  const byTier = {};
+  state.devices.forEach(d => (byTier[tier[d.id]] = byTier[tier[d.id]] || []).push(d));
+  const total = state.devices.length;
+  const perRow = Math.min(12, Math.max(4, Math.ceil(Math.sqrt(total * 1.6))));
+  let y = 90;
+  for (const t of Object.keys(byTier).map(Number).sort((a,b)=>a-b)){
+    const arr = byTier[t];
+    arr.forEach((d, i) => {
+      const r = Math.floor(i / perRow), c = i % perRow;
+      d.pos = { x: 120 + c * 250 + (r % 2) * 50, y: y + r * 128 };
+    });
+    y += Math.ceil(arr.length / perRow) * 128 + 110;
+  }
+  // physical: グループをグリッド配置・グループ内は縦8台で折り返し
+  const groups = {};
+  state.devices.forEach(d => (groups[d.location || '未設定'] = groups[d.location || '未設定'] || []).push(d));
+  const rowLimit = Math.max(2600, perRow * 250);
+  let gx = 130, gy = 130, rowMaxH = 0;
+  for (const arr of Object.values(groups)){
+    const perCol = 8, cols = Math.ceil(arr.length / perCol);
+    arr.forEach((d, i) => {
+      const c = Math.floor(i / perCol), r = i % perCol;
+      d.physPos = { x: gx + c * 212, y: gy + r * 92 };
+    });
+    const gw = cols * 212 + 110, gh = Math.min(arr.length, perCol) * 92 + 100;
+    rowMaxH = Math.max(rowMaxH, gh);
+    gx += gw;
+    if (gx > rowLimit){ gx = 130; gy += rowMaxH + 70; rowMaxH = 0; }
+  }
+  renderAll();
+  fitView();
+}
+
+// ---------------- filters ----------------
+// Po配下のメンバーポートはPort-channel側のswitchport設定を継承
+function effSw(dev, port){
+  const it = dev.interfaces[port];
+  if (!it) return null;
+  if (it.channelGroup != null){
+    const po = dev.interfaces['Port-channel' + it.channelGroup];
+    if (po){
+      return {
+        mode: it.mode || po.mode,
+        trunkVlans: (it.trunkVlans && it.trunkVlans.length) ? it.trunkVlans : (po.trunkVlans || []),
+        accessVlan: it.accessVlan != null ? it.accessVlan : po.accessVlan,
+        ip: it.ip || po.ip, dot1q: it.dot1q,
+      };
+    }
+  }
+  return it;
+}
+function devDefinesVlan(d, v){
+  return (v in d.vlans) || !!d.interfaces['Vlan' + v] ||
+    Object.values(d.interfaces).some(x => x.dot1q === v);
+}
+// リンク端点のVLAN許可判定: 'explicit'(明示的に通す) / 'wild'(暗黙全許可) / 'deny'
+function endPermit(devId, port, v){
+  const d = devById(devId);
+  if (!d) return 'wild';
+  if (d.custom || !Object.keys(d.interfaces).length) return 'wild';
+  const it = effSw(d, port);
+  if (!it) return 'wild';
+  if (it.dot1q) return it.dot1q === v ? 'explicit' : 'deny';
+  if (it.mode === 'routed' || (!it.mode && it.ip)) return 'deny'; // L3境界
+  if (it.mode === 'trunk'){
+    if (it.trunkVlans && it.trunkVlans.length) return it.trunkVlans.includes(v) ? 'explicit' : 'deny';
+    // allowed未指定トランク: 機器がそのVLANを定義していれば明示扱い、なければ暗黙
+    return devDefinesVlan(d, v) ? 'explicit' : 'wild';
+  }
+  if (it.accessVlan != null) return it.accessVlan === v ? 'explicit' : 'deny';
+  if (it.mode === 'access') return v === 1 ? 'explicit' : 'deny'; // access vlan未指定=VLAN1
+  return 'wild';
+}
+// 両端が拒否しておらず、少なくとも片端に明示的な根拠がある場合のみ「通っている」
+function linkCarriesVlan(l, v){
+  const pa = endPermit(l.a.dev, l.a.port, v);
+  const pb = endPermit(l.b.dev, l.b.port, v);
+  if (pa === 'deny' || pb === 'deny') return false;
+  return pa === 'explicit' || pb === 'explicit';
+}
+// L3図用: 機器のIF IP / ネットワーク(net/prefix) / FHRP仮想IPに検索語がマッチするか
+function devIpMatch(d, s){
+  if (!/[0-9]/.test(s)) return false;
+  for (const it of Object.values(d.interfaces || {})){
+    const list = (it.ips && it.ips.length) ? it.ips : (it.ip ? [it.ip] : []);
+    for (const raw of list){
+      const pm = parseIpMask(raw);
+      if (pm){ if (pm.ip.includes(s) || pm.key.includes(s)) return true; }
+      else if (raw && raw.split(/\s+/)[0].includes(s)) return true;
+    }
+    for (const f of it.fhrp || []) if (f.vip && f.vip.includes(s)) return true;
+  }
+  return false;
+}
+function devDimmed(d){
+  const s = state.search.trim().toLowerCase();
+  if (s && !d.hostname.toLowerCase().includes(s) &&
+      !(state.view === 'l3' && devIpMatch(d, s))) return true;
+  if (state.vlanFilter !== ''){
+    const v = +state.vlanFilter;
+    const has = devDefinesVlan(d, v) ||
+      Object.values(d.interfaces).some(it => it.accessVlan === v ||
+        (it.mode === 'trunk' && it.trunkVlans && it.trunkVlans.includes(v))) ||
+      state.links.some(l => (l.a.dev === d.id || l.b.dev === d.id) && linkCarriesVlan(l, v));
+    if (!has) return true;
+  }
+  return false;
+}
+function linkDimmed(l){
+  if (state.vlanFilter !== '' && !linkCarriesVlan(l, +state.vlanFilter)) return true;
+  if (state.search.trim()){
+    const dA = devById(l.a.dev), dB = devById(l.b.dev);
+    if (dA && dB && devDimmed(dA) && devDimmed(dB)) return true;
+  }
+  return false;
+}
+
+// ---------------- rendering: canvas ----------------
+const NODE_W = 192, NODE_H = 80;
+const MEDIA_STYLE = {
+  fiber: { stroke: '#E8930C', width: 2.4, dash: '' },
+  utp:   { stroke: '#4A7FA5', width: 2.0, dash: '' },
+  dac:   { stroke: '#2AA198', width: 2.2, dash: '7 4' },
+  unknown:{ stroke: '#9AA7B2', width: 1.6, dash: '3 4' },
+};
+let LAYERS = null;
+const NODE_ELS = new Map();
+const NOTE_ELS = new Map();
+
+// ---------------- 複数選択 ----------------
+function isSelected(id){ return state.sel.includes(id); }
+function setSelection(ids){ state.sel = [...new Set(ids)]; refreshSelClasses(); }
+function refreshSelClasses(){
+  NODE_ELS.forEach((g, id) => g.classList.toggle('sel', isSelected(id) || state.selectedDevice === id));
+  NOTE_ELS.forEach((g, id) => g.classList.toggle('sel', isSelected(id) || state.selectedNote === id));
+  SEG_ELS.forEach((g, id) => g.classList.toggle('sel', isSelected(id)));
+}
+function noteSize(n){
+  const lines = String(n.text || '').split('\n');
+  const w = Math.min(440, Math.max(84, Math.max(...lines.map(l => textUnits(l))) * 6.1 + 24));
+  return { w, h: lines.length * 15.5 + 13 };
+}
+function selItems(){
+  const out = [];
+  for (const id of state.sel){
+    if (String(id).startsWith('seg:') && L3M){
+      const seg = L3M.segs.find(s => 'seg:' + s.key === id);
+      if (seg){
+        const p = segPos(seg), s = segSize(seg);
+        out.push({ x: p.x, y: p.y, w: s.w, h: s.h,
+          set: (x, y) => state.l3SegPos[seg.key] = { x, y } });
+      }
+      continue;
+    }
+    const d = devById(id);
+    if (d){
+      const p = nodePos(d);
+      out.push({ x: p.x, y: p.y, w: NODE_W, h: NODE_H, set: (x, y) => setNodePos(d, { x, y }) });
+      continue;
+    }
+    const n = state.notes.find(x => x.id === id);
+    if (n && n.view === state.view){
+      const s = noteSize(n);
+      out.push({ x: n.x, y: n.y, w: s.w, h: s.h, set: (x, y) => { n.x = x; n.y = y; } });
+    }
+  }
+  return out;
+}
+function alignSel(mode){
+  const items = selItems();
+  if (items.length < 2) return toast('2つ以上選択してください(背景ドラッグ / Shift+クリック / Ctrl+A)');
+  if (mode === 'left'){ const r = Math.min(...items.map(i => i.x)); items.forEach(i => i.set(r, i.y)); }
+  else if (mode === 'right'){ const r = Math.max(...items.map(i => i.x + i.w)); items.forEach(i => i.set(r - i.w, i.y)); }
+  else if (mode === 'top'){ const r = Math.min(...items.map(i => i.y)); items.forEach(i => i.set(i.x, r)); }
+  else if (mode === 'bottom'){ const r = Math.max(...items.map(i => i.y + i.h)); items.forEach(i => i.set(i.x, r - i.h)); }
+  renderCanvas(); scheduleAutosave();
+}
+function distributeSel(axis){
+  const items = selItems();
+  if (items.length < 3) return toast('3つ以上選択してください');
+  items.sort((a, b) => axis === 'h' ? (a.x - b.x) : (a.y - b.y));
+  const f = items[0], l = items[items.length - 1];
+  if (axis === 'h'){
+    const c0 = f.x + f.w / 2, c1 = l.x + l.w / 2, step = (c1 - c0) / (items.length - 1);
+    items.forEach((i, k) => i.set(c0 + step * k - i.w / 2, i.y));
+  } else {
+    const c0 = f.y + f.h / 2, c1 = l.y + l.h / 2, step = (c1 - c0) / (items.length - 1);
+    items.forEach((i, k) => i.set(i.x, c0 + step * k - i.h / 2));
+  }
+  renderCanvas(); scheduleAutosave();
+}
+function selectAll(){
+  setSelection([
+    ...(state.view === 'l3' ? L3_SHOWN : state.devices).map(d => d.id),
+    ...(state.view === 'l3' && L3M ? L3M.segs.map(s => 'seg:' + s.key) : []),
+    ...state.notes.filter(n => n.view === state.view).map(n => n.id),
+  ]);
+}
+function moveSelectedBy(dx, dy){
+  const devIds = [];
+  for (const id of state.sel){
+    const d = devById(id);
+    if (d){
+      const p = nodePos(d);
+      setNodePos(d, { x: Math.max(10, p.x + dx), y: Math.max(34, p.y + dy) });
+      const g = NODE_ELS.get(id);
+      if (g){ const np = nodePos(d); g.setAttribute('transform', `translate(${np.x},${np.y})`); }
+      devIds.push(id);
+      continue;
+    }
+    const n = state.notes.find(x => x.id === id);
+    if (n){
+      n.x = Math.max(10, n.x + dx); n.y = Math.max(20, n.y + dy);
+      const g = NOTE_ELS.get(id);
+      if (g) g.setAttribute('transform', `translate(${n.x},${n.y})`);
+    }
+  }
+  if (devIds.length) scheduleLinkRebuild(devIds);
+  scheduleAutosave();
+}
+
+function nodePos(d){
+  if (state.view === 'physical') return d.physPos || { x: 100, y: 100 };
+  if (state.view === 'l3') return d.l3Pos || d.pos || { x: 100, y: 100 };
+  return d.pos || { x: 100, y: 100 };
+}
+function setNodePos(d, p){
+  if (state.view === 'physical') d.physPos = p;
+  else if (state.view === 'l3') d.l3Pos = p;
+  else d.pos = p;
+}
+function center(d){ const p = nodePos(d); return { x: p.x + NODE_W / 2, y: p.y + NODE_H / 2 }; }
+function contentSize(){
+  let maxX = 900, maxY = 560;
+  const devs = state.view === 'l3' ? L3_SHOWN : state.devices;
+  devs.forEach(d => { const p = nodePos(d);
+    maxX = Math.max(maxX, p.x + NODE_W + 170); maxY = Math.max(maxY, p.y + 230); });
+  if (state.view === 'l3' && L3M)
+    L3M.segs.forEach(seg => { const p = segPos(seg), s = segSize(seg);
+      maxX = Math.max(maxX, p.x + s.w + 170); maxY = Math.max(maxY, p.y + s.h + 170); });
+  state.notes.forEach(n => { if (n.view !== state.view) return;
+    maxX = Math.max(maxX, n.x + 400); maxY = Math.max(maxY, n.y + 160); });
+  return { w: maxX, h: maxY };
+}
+function applyZoom(){
+  if (!LAYERS) return;
+  LAYERS.svg.style.width = (LAYERS.w * state.zoom) + 'px';
+  LAYERS.svg.style.height = (LAYERS.h * state.zoom) + 'px';
+  const z = $('#zoomPct'); if (z) z.textContent = Math.round(state.zoom * 100) + '%';
+}
+function zoomBy(f, cx, cy){
+  const holder = $('#canvasHolder');
+  const old = state.zoom;
+  state.zoom = Math.min(3, Math.max(0.12, state.zoom * f));
+  applyZoom();
+  if (cx !== undefined){ // keep pointer position stable
+    const k = state.zoom / old;
+    holder.scrollLeft = (holder.scrollLeft + cx) * k - cx;
+    holder.scrollTop = (holder.scrollTop + cy) * k - cy;
+  }
+}
+function fitView(){
+  if (!LAYERS) return;
+  const holder = $('#canvasHolder');
+  state.zoom = Math.min(2, Math.max(0.12,
+    Math.min((holder.clientWidth - 24) / LAYERS.w, (holder.clientHeight - 24) / LAYERS.h)));
+  applyZoom();
+  holder.scrollLeft = 0; holder.scrollTop = 0;
+}
+
+function renderCanvas(){
+  const holder = $('#canvasHolder'); holder.innerHTML = '';
+  if (state.view === 'table'){ LAYERS = null; renderTableView(holder); return; }
+  let i = 0;
+  state.devices.forEach(d => {
+    if (!d.pos) d.pos = { x: 120 + (i % 6) * 250, y: 90 + Math.floor(i / 6) * 150 };
+    if (!d.physPos) d.physPos = { x: 120 + (i % 6) * 250, y: 90 + Math.floor(i / 6) * 150 };
+    i++;
+  });
+  if (state.view === 'l3'){
+    L3M = buildL3Model();
+    L3_SHOWN = l3VisibleDevices(L3M);
+    ensureL3Positions();
+  } else { L3M = null; L3_SHOWN = []; }
+  const { w, h } = contentSize();
+  const svg = el('svg', { class: 'diagram', id: 'diagramSvg', width: w, height: h,
+    xmlns: 'http://www.w3.org/2000/svg', viewBox: `0 0 ${w} ${h}` });
+  holder.append(svg);
+  const gGroups = el('g'), gLinks = el('g'), gNodes = el('g'), gNotes = el('g'), gLegend = el('g'), gMarquee = el('g');
+  svg.append(gGroups, gLinks, gNodes, gNotes, gLegend, gMarquee);
+  LAYERS = { svg, gGroups, gLinks, gNodes, gNotes, gLegend, gMarquee, w, h };
+  rebuildGroups();
+  rebuildLinks();
+  renderNodes();
+  renderSegs();
+  renderNotes();
+  renderLegend();
+  applyZoom();
+  enableMarquee(svg);
+}
+// 背景ドラッグで矩形選択
+function enableMarquee(svg){
+  svg.addEventListener('pointerdown', ev => {
+    if (ev.target !== svg) return;
+    const rect = svg.getBoundingClientRect();
+    const z = state.zoom || 1;
+    const sx = (ev.clientX - rect.left) / z, sy = (ev.clientY - rect.top) / z;
+    const mq = el('rect', { x: sx, y: sy, width: 0, height: 0, 'pointer-events': 'none',
+      fill: 'rgba(63,167,214,.12)', stroke: '#3FA7D6', 'stroke-width': 1, 'stroke-dasharray': '4 3' });
+    LAYERS.gMarquee.append(mq);
+    try { svg.setPointerCapture(ev.pointerId); } catch {}
+    const cleanup = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('blur', cancel);
+      mq.remove();
+    };
+    const cancel = () => cleanup();
+    const move = e2 => {
+      const x2 = (e2.clientX - rect.left) / z, y2 = (e2.clientY - rect.top) / z;
+      mq.setAttribute('x', Math.min(sx, x2)); mq.setAttribute('y', Math.min(sy, y2));
+      mq.setAttribute('width', Math.abs(x2 - sx)); mq.setAttribute('height', Math.abs(y2 - sy));
+    };
+    const up = () => {
+      const x = +mq.getAttribute('x'), y = +mq.getAttribute('y');
+      const w = +mq.getAttribute('width'), h = +mq.getAttribute('height');
+      cleanup();
+      if (w < 6 && h < 6){ // 背景クリック: 選択解除
+        state.sel = []; refreshSelClasses(); return;
+      }
+      const ids = [];
+      for (const d of state.devices){
+        const p = nodePos(d), cx = p.x + NODE_W / 2, cy = p.y + NODE_H / 2;
+        if (cx >= x && cx <= x + w && cy >= y && cy <= y + h) ids.push(d.id);
+      }
+      if (state.view === 'l3' && L3M){
+        for (const seg of L3M.segs){
+          const p = segPos(seg), s = segSize(seg);
+          const cx = p.x + s.w / 2, cy = p.y + s.h / 2;
+          if (cx >= x && cx <= x + w && cy >= y && cy <= y + h) ids.push('seg:' + seg.key);
+        }
+      }
+      for (const n of state.notes){
+        if (n.view !== state.view) continue;
+        if (n.x >= x - 60 && n.x <= x + w && n.y >= y - 30 && n.y <= y + h) ids.push(n.id);
+      }
+      setSelection(ids);
+      const nDev = ids.filter(id => devById(id)).length;
+      if (nDev >= 2){
+        state.sideTab = 'detail'; renderSide();
+        toast(`${ids.length}件を選択(まとめてドラッグ / 詳細タブで設置場所を一括設定)`);
+      } else if (ids.length) toast(`${ids.length}件を選択しました(まとめてドラッグできます)`);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', cancel);
+    window.addEventListener('blur', cancel);
+  });
+}
+function growCanvasIfNeeded(){
+  if (!LAYERS) return;
+  const { w, h } = contentSize();
+  if (w > LAYERS.w || h > LAYERS.h){
+    LAYERS.w = Math.max(LAYERS.w, w); LAYERS.h = Math.max(LAYERS.h, h);
+    LAYERS.svg.setAttribute('width', LAYERS.w); LAYERS.svg.setAttribute('height', LAYERS.h);
+    LAYERS.svg.setAttribute('viewBox', `0 0 ${LAYERS.w} ${LAYERS.h}`);
+    applyZoom(); renderLegend();
+  }
+}
+
+function buildPairGroup(key, links){
+  const pg = el('g', { 'data-key': key });
+  const dA = devById(links[0].a.dev), dB = devById(links[0].b.dev);
+  if (!dA || !dB) return pg;
+  const cA = center(dA), cB = center(dB);
+  const dx = cB.x - cA.x, dy = cB.y - cA.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;
+  const n = links.length;
+  links.forEach((l, i) => {
+    const off = (i - (n - 1) / 2) * 16;
+    const p1 = { x: cA.x + nx * off, y: cA.y + ny * off };
+    const p2 = { x: cB.x + nx * off, y: cB.y + ny * off };
+    const st = l.edge ? { stroke: '#8FA3B5', width: 1.4, dash: '5 4' }
+      : (MEDIA_STYLE[l.media] || MEDIA_STYLE.unknown);
+    const lg = el('g', linkDimmed(l) ? { opacity: 0.1 } : {});
+    lg.append(el('line', { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
+      stroke: st.stroke, 'stroke-width': st.width, 'stroke-dasharray': st.dash, 'stroke-linecap': 'round' }));
+    const la = l.a.dev === dA.id ? { aPort: l.a.port, bPort: l.b.port } : { aPort: l.b.port, bPort: l.a.port };
+    if (l.edge){
+      const swPort = devById(l.a.dev)?.autoEdge ? la.bPort : la.aPort;
+      addMidLabel(lg, lerp(p1, p2, 0.5), swPort, '#8FA3B5');
+      pg.append(lg); return;
+    }
+    const po = bothPo(l);
+    addPortLabel(lg, lerp(p1, p2, 0.16), shortIf(la.aPort));
+    addPortLabel(lg, lerp(p1, p2, 0.84), shortIf(la.bPort));
+    const info = linkMidLabel(l, po);
+    if (info) addMidLabel(lg, lerp(p1, p2, 0.5), info, po ? '#7C5CBF' : '#5A6B7B');
+    pg.append(lg);
+  });
+  return pg;
+}
+// L3図の線: (1)物理配線(参考・薄灰) (2)ルーテッドP2P直結線 (3)機器→セグメント接続線
+function rebuildL3Lines(){
+  if (!LAYERS || !L3M) return;
+  const g = LAYERS.gLinks; g.textContent = '';
+  const shownIds = new Set(L3_SHOWN.map(d => d.id));
+  // (1) 物理配線: L2重ね表示時は全リンク、OFF時は手動追加オブジェクト絡みのみ(WAN雲・FW等への配線)
+  for (const l of state.links){
+    if (!shownIds.has(l.a.dev) || !shownIds.has(l.b.dev)) continue;
+    const dA = devById(l.a.dev), dB = devById(l.b.dev);
+    if (!dA || !dB) continue;
+    if (!state.showL2 && !(dA.custom || dB.custom)) continue;
+    const cA = center(dA), cB = center(dB);
+    const dim = devDimmed(dA) && devDimmed(dB);
+    const lg = el('g', { opacity: dim ? .06 : .5 });
+    lg.append(el('line', { x1: cA.x, y1: cA.y, x2: cB.x, y2: cB.y,
+      stroke: '#ADBCC9', 'stroke-width': 1.3, 'stroke-dasharray': '3 4' }));
+    g.append(lg);
+  }
+  // (2) ルーテッドP2P
+  for (const t of L3M.transits){
+    const dA = devById(t.members[0].dev), dB = devById(t.members[1].dev);
+    if (!dA || !dB || !shownIds.has(dA.id) || !shownIds.has(dB.id)) continue;
+    const cA = center(dA), cB = center(dB);
+    const lg = el('g', transitDimmed(t, dA, dB) ? { opacity: 0.1 } : {});
+    lg.append(el('line', { x1: cA.x, y1: cA.y, x2: cB.x, y2: cB.y,
+      stroke: '#51617E', 'stroke-width': 2.6, 'stroke-linecap': 'round' }));
+    addPortLabel(lg, lerp(cA, cB, 0.18), shortIf(t.members[0].port) + ' .' + t.members[0].host);
+    addPortLabel(lg, lerp(cA, cB, 0.82), shortIf(t.members[1].port) + ' .' + t.members[1].host);
+    addMidLabel(lg, lerp(cA, cB, 0.5),
+      t.net + '/' + t.prefix + (t.vlanList.length ? ' VL' + t.vlanList.join(',') : ''), '#51617E');
+    g.append(lg);
+  }
+  // (3) セグメント接続線
+  for (const seg of L3M.segs){
+    const sp = segPos(seg), ss = segSize(seg);
+    const sc = { x: sp.x + ss.w / 2, y: sp.y + ss.h / 2 };
+    const col = segColor(seg.key);
+    const sd = segDimmed(seg);
+    for (const m of seg.members){
+      const d = devById(m.dev);
+      if (!d || !shownIds.has(d.id)) continue;
+      const isRt = L3M.routerIds.has(d.id) || d.custom;
+      const c = center(d);
+      const lg = el('g', (sd || devDimmed(d)) ? { opacity: 0.1 } : (isRt ? {} : { opacity: 0.35 }));
+      lg.append(el('line', { x1: c.x, y1: c.y, x2: sc.x, y2: sc.y,
+        stroke: col, 'stroke-width': isRt ? 2 : 1.1, ...(isRt ? {} : { 'stroke-dasharray': '4 3' }) }));
+      if (isRt) addPortLabel(lg, lerp(c, sc, 0.38), shortIf(m.port) + ' .' + m.host);
+      g.append(lg);
+    }
+  }
+}
+// セグメントノード(サブネットのバー)を描画。gNodesの先頭に挿入して機器を上に重ねる
+function renderSegs(){
+  SEG_ELS.clear();
+  if (state.view !== 'l3' || !L3M || !LAYERS) return;
+  const g = LAYERS.gNodes;
+  for (const seg of [...L3M.segs].reverse()){
+    const sp = segPos(seg), { w, h, lines } = segSize(seg);
+    const col = segColor(seg.key);
+    const segId = 'seg:' + seg.key;
+    const attrs = { class: 'node segnode' + (isSelected(segId) ? ' sel' : ''),
+      transform: `translate(${sp.x},${sp.y})` };
+    if (segDimmed(seg)) attrs.opacity = 0.15;
+    const grp = el('g', attrs);
+    grp.append(el('rect', { class: 'seg-body', width: w, height: h, rx: Math.min(13, h / 2),
+      fill: tint(col, 0.9), stroke: col }));
+    grp.append(el('rect', { x: 0, y: 0, width: 6, height: h, rx: 3, fill: col }));
+    lines.forEach((t, i) => grp.append(el('text', {
+      x: 15, y: 17 + i * 15, 'font-size': i === 0 ? 11.5 : 10,
+      'font-weight': i === 0 ? 700 : 400, fill: '#22384C',
+      ...(i === 0 ? { 'font-family': 'var(--mono)' } : {}) }, t)));
+    enableDrag(grp, segId, shift => {
+      if (shift){
+        setSelection(isSelected(segId) ? state.sel.filter(x => x !== segId) : [...state.sel, segId]);
+        return;
+      }
+      state.sel = [segId]; state.selectedDevice = null; state.selectedNote = null;
+      refreshSelClasses();
+      const mem = seg.members.map(m =>
+        `${devById(m.dev)?.hostname || '?'} ${shortIf(m.port)}(.${m.host})`).join(' / ');
+      toast(clipUnits(`${seg.net}/${seg.prefix} 接続${seg.members.length}台: ${mem}`, 150));
+    });
+    SEG_ELS.set(segId, grp);
+    g.prepend(grp);
+  }
+}
+function rebuildLinks(devId){
+  if (state.view === 'l3'){ rebuildL3Lines(); return; }
+  const g = LAYERS.gLinks;
+  const pairMap = {};
+  for (const l of state.links){
+    const key = [l.a.dev, l.b.dev].sort().join('#');
+    (pairMap[key] = pairMap[key] || []).push(l);
+  }
+  if (devId){ // ドラッグ中: 対象機器に接続するペアのみ差し替え
+    [...g.children].forEach(c => {
+      const k = (c.getAttribute('data-key') || '').split('#');
+      if (k.includes(devId)) c.remove();
+    });
+    for (const [key, links] of Object.entries(pairMap))
+      if (key.split('#').includes(devId)) g.append(buildPairGroup(key, links));
+  } else {
+    g.textContent = '';
+    for (const [key, links] of Object.entries(pairMap)) g.append(buildPairGroup(key, links));
+  }
+}
+function bothPo(l){
+  const ia = devById(l.a.dev)?.interfaces[l.a.port];
+  const ib = devById(l.b.dev)?.interfaces[l.b.port];
+  if (ia?.channelGroup && ib?.channelGroup) return { a: ia.channelGroup, b: ib.channelGroup, mode: ia.chMode || ib.chMode };
+  return null;
+}
+function linkMidLabel(l, po){
+  const it = devById(l.a.dev)?.interfaces[l.a.port];
+  const parts = [];
+  if (po) parts.push(`Po${po.a}${po.mode ? '(' + po.mode + ')' : ''}`);
+  if (it){
+    if (it.mode === 'trunk') parts.push('Trk:' + (it.trunkVlans.length ? vlanSummaryStr(it.trunkVlans, 18) : 'all'));
+    else if (it.accessVlan) parts.push('VL' + it.accessVlan);
+    else {
+      const dq = dot1qVlansOf(l.a.dev, l.a.port);
+      if (dq.length) parts.push('dot1Q:' + vlanSummaryStr(dq, 14));
+      else if (it.mode === 'routed' || it.ip) parts.push('L3');
+    }
+  }
+  return parts.join(' ');
+}
+function lerp(a, b, t){ return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; }
+function addPortLabel(g, p, txt){
+  const w = textUnits(txt) * 6 + 8;
+  g.append(el('rect', { class: 'portlbl-bg', x: p.x - w / 2, y: p.y - 8, width: w, height: 14, rx: 2 }));
+  g.append(el('text', { class: 'portlbl', x: p.x, y: p.y + 3, 'text-anchor': 'middle' }, txt));
+}
+function addMidLabel(g, p, txt, color){
+  const w = textUnits(txt) * 6.2 + 12;
+  g.append(el('rect', { x: p.x - w / 2, y: p.y - 9, width: w, height: 16, rx: 4,
+    fill: '#FFF', stroke: color, 'stroke-width': 1 }));
+  g.append(el('text', { class: 'midlbl', x: p.x, y: p.y + 3.5, 'text-anchor': 'middle', fill: color }, txt));
+}
+
+function isDark(hex){
+  const m = String(hex || '').match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!m) return false;
+  let h = m[1];
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const r = parseInt(h.slice(0,2),16), gg = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+  return (0.299*r + 0.587*gg + 0.114*b) / 255 < 0.55;
+}
+function drawBody(grp, d, fill){
+  const shapeMap = { wan:'cloud', ap:'pill', server:'rack', storage:'rack', pc:'screen', printer:'screen', phone:'screen' };
+  const ck = d.custom ? d.ctype : (CTYPES[d.dispType] ? d.dispType : null);
+  const shape = ck ? (shapeMap[ck] || 'rect') : 'rect';
+  if (shape === 'cloud'){
+    grp.append(el('rect', { class: 'body', width: NODE_W, height: NODE_H, rx: NODE_H / 2, fill, 'stroke-dasharray': '7 4' }));
+  } else if (shape === 'pill'){
+    grp.append(el('rect', { class: 'body', width: NODE_W, height: NODE_H, rx: 18, fill }));
+    grp.append(el('path', { d: `M${NODE_W-22},${NODE_H-10} a12,12 0 0 0 12,-12`, fill: 'none', stroke: '#7C5CBF', 'stroke-width': 1.6 }));
+    grp.append(el('path', { d: `M${NODE_W-22},${NODE_H-16} a6,6 0 0 0 6,-6`, fill: 'none', stroke: '#7C5CBF', 'stroke-width': 1.6 }));
+  } else if (shape === 'rack'){
+    grp.append(el('rect', { class: 'body', width: NODE_W, height: NODE_H, rx: 2, fill }));
+    grp.append(el('rect', { x: 3, y: 3, width: NODE_W - 6, height: NODE_H - 6, rx: 1, fill: 'none', stroke: '#8FA3B5', 'stroke-width': .8 }));
+  } else if (shape === 'screen'){
+    grp.append(el('rect', { class: 'body', width: NODE_W, height: NODE_H, rx: 8, fill }));
+    grp.append(el('rect', { x: NODE_W/2 - 16, y: NODE_H, width: 32, height: 5, fill: '#9FB4C6' }));
+    grp.append(el('rect', { x: NODE_W/2 - 26, y: NODE_H + 5, width: 52, height: 3, rx: 1.5, fill: '#B9C9D6' }));
+  } else {
+    grp.append(el('rect', { class: 'body', width: NODE_W, height: NODE_H, rx: 8, fill }));
+  }
+}
+
+function renderNodes(){
+  const g = LAYERS.gNodes; g.textContent = ''; NODE_ELS.clear();
+  const roots = stpRoots();
+  const devList = state.view === 'l3' ? L3_SHOWN : state.devices;
+  for (const d of devList){
+    const isL2Ref = state.view === 'l3' && L3M && !L3M.routerIds.has(d.id) && !d.custom; // L2重ね表示の参考機器(管理SVIのみの機器を含む)
+    const p = nodePos(d);
+    const attrs = { class: 'node' + (state.selectedDevice === d.id || isSelected(d.id) ? ' sel' : ''), transform: `translate(${p.x},${p.y})` };
+    if (devDimmed(d)) attrs.opacity = 0.15;
+    else if (isL2Ref) attrs.opacity = 0.42;
+    const grp = el('g', attrs);
+    const sc = stackCount(d);
+    if (sc > 1){ // スタック: 背面に重ね箱
+      grp.append(el('rect', { x: 10, y: 10, width: NODE_W, height: NODE_H, rx: 8, fill: '#DDE7EF', stroke: '#9FB4C6', 'stroke-width': 1 }));
+      grp.append(el('rect', { x: 5, y: 5, width: NODE_W, height: NODE_H, rx: 8, fill: '#EDF3F7', stroke: '#9FB4C6', 'stroke-width': 1 }));
+    }
+    let kind = devKind(d);
+    if (!d.custom && ['router','l3sw','sw'].includes(d.dispType)) kind = d.dispType === 'l3sw' ? 'l3sw' : d.dispType;
+    const ct = d.custom ? (CTYPES[d.ctype] || CTYPES.other)
+      : (CTYPES[d.dispType] || null);
+    const fill = d.color || '#FFFFFF';
+    const dark = isDark(fill);
+    drawBody(grp, d, fill);
+    grp.append(el('rect', { width: 6, height: NODE_H, rx: 3,
+      fill: ct ? ct.color : kind === 'router' ? '#B0713A' : d.isL3 ? '#365B7A' : '#7FA6C4' }));
+    grp.append(el('text', { class: 'hn', x: 14, y: 20, ...(dark ? { style: 'fill:#F4F8FB' } : {}) }, clipUnits(d.hostname, 20)));
+    const chip = (ct ? ct.chip : kind === 'router' ? 'RT' : kind === 'l3sw' ? 'L3' : 'SW') + (sc > 1 ? '×' + sc : '');
+    const cw = chip.length * 6.5 + 10;
+    grp.append(el('rect', { x: NODE_W - cw - 8, y: 8, width: cw, height: 14, rx: 3, fill: '#EEF3F7', stroke: '#9FB4C6', 'stroke-width': 0.8 }));
+    grp.append(el('text', { x: NODE_W - 8 - cw / 2, y: 18.5, 'text-anchor': 'middle', 'font-size': 9, 'font-weight': 700, fill: '#44586C', 'font-family': 'var(--mono)' }, chip));
+    let y = 28;
+    if (roots[d.id]){
+      const vls = vlanSummaryStr(roots[d.id], 14);
+      grp.append(el('rect', { x: 14, y: y, width: 9 * 6 + textUnits(vls) * 5.6 + 10, height: 13, rx: 3, fill: '#C9A227' }));
+      grp.append(el('text', { x: 18, y: y + 10, 'font-size': 9, 'font-weight': 700, fill: '#211A00', 'font-family': 'var(--mono)' }, 'STP ROOT ' + vls));
+      y += 17;
+    }
+    const sub1 = state.view === 'physical' ? (d.location || '設置場所 未設定')
+      : state.view === 'l3' ? (routingStr(d) ||
+          (d.custom ? (d.mgmtIp || (CTYPES[d.ctype] || CTYPES.other).label)
+            : isL2Ref ? 'L2スイッチ(参考表示)' : 'ルーティングプロトコルなし'))
+      : d.custom ? (d.mgmtIp || (CTYPES[d.ctype] || CTYPES.other).label)
+      : `VLAN: ${Object.keys(d.vlans).length ? vlanSummaryStr(Object.keys(d.vlans).map(Number), 24) : '-'}`;
+    grp.append(el('text', { class: 'loc', x: 14, y: y + 11, ...(dark ? { style: 'fill:#D7E3ED' } : {}) }, clipUnits(sub1, 32)));
+    const fh = new Set();
+    Object.values(d.interfaces).forEach(it => (it.fhrp || []).forEach(f => fh.add(f.type)));
+    const bits = d.autoEdge
+      ? [`${d.autoEdge.hosts.length}台 / ${new Set(d.autoEdge.hosts.map(h => h.port)).size}ポート / VLAN:${vlanSummaryStr([...new Set(d.autoEdge.hosts.map(h => h.vlan))].sort((a,b)=>a-b), 14) || '-'}`]
+      : d.custom
+      ? ['Port: ' + Object.keys(d.interfaces).slice(0, 3).join(', ').slice(0, 24)]
+      : ['IF:' + Object.keys(d.interfaces).filter(isPhysicalIf).length];
+    if ((d.routing || []).length) bits.push(d.routing.map(r => r.split(' ')[0]).join('/'));
+    if (d.staticRoutes) bits.push('St×' + d.staticRoutes);
+    if ((d.acls || []).length) bits.push('ACL:' + d.acls.length);
+    if (fh.size) bits.push([...fh].join('/'));
+    grp.append(el('text', { class: 'sub', x: 14, y: y + 24, ...(dark ? { style: 'fill:#C4D3DF' } : {}) }, clipUnits(bits.join(' '), 29)));
+    enableDrag(grp, d.id, shift => {
+      if (shift){
+        setSelection(isSelected(d.id) ? state.sel.filter(x => x !== d.id) : [...state.sel, d.id]);
+        return;
+      }
+      state.sel = [d.id]; state.selectedDevice = d.id; state.selectedNote = null;
+      state.sideTab = 'detail'; renderSide(); refreshSelClasses();
+    });
+    NODE_ELS.set(d.id, grp);
+    g.append(grp);
+  }
+}
+
+// ---------------- 吹き出しコメント ----------------
+function renderNotes(){
+  if (!LAYERS) return;
+  const g = LAYERS.gNotes; g.textContent = ''; NOTE_ELS.clear();
+  for (const n of state.notes){
+    if (n.view !== state.view) continue;
+    const fill = n.color || '#FFF7CC';
+    const dark = isDark(fill);
+    const lines = String(n.text || '').split('\n');
+    const w = Math.min(440, Math.max(84, Math.max(...lines.map(l => textUnits(l))) * 6.1 + 24));
+    const h = lines.length * 15.5 + 13;
+    const grp = el('g', { class: 'note' + (isSelected(n.id) || state.selectedNote === n.id ? ' sel' : ''), transform: `translate(${n.x},${n.y})` });
+    grp.append(el('path', { class: 'note-body', d: `M18,${h - 2} l7,13 l5,-13 z`, fill }));
+    grp.append(el('rect', { class: 'note-body', width: w, height: h, rx: 7, fill }));
+    lines.forEach((l, i) => grp.append(el('text', {
+      x: 11, y: 17 + i * 15.5, 'font-size': 11.5,
+      fill: dark ? '#F4F8FB' : '#4A3F14' }, l)));
+    enableDrag(grp, n.id, shift => {
+      if (shift){
+        setSelection(isSelected(n.id) ? state.sel.filter(x => x !== n.id) : [...state.sel, n.id]);
+        return;
+      }
+      state.sel = [n.id]; state.selectedNote = n.id; state.selectedDevice = null;
+      state.sideTab = 'detail'; renderSide(); refreshSelClasses();
+    });
+    NOTE_ELS.set(n.id, grp);
+    g.append(grp);
+  }
+}
+function addNote(){
+  if (state.view === 'table'){ toast('コメントは論理図・物理図で追加できます'); return; }
+  const holder = $('#canvasHolder');
+  const z = state.zoom || 1;
+  const x = Math.max(60, (holder.scrollLeft + holder.clientWidth / 2) / z - 60);
+  const y = Math.max(40, (holder.scrollTop + holder.clientHeight / 3) / z);
+  const n = { id: uid(), view: state.view, x, y, text: 'コメント', color: '#FFF7CC' };
+  state.notes.push(n);
+  state.sel = [n.id]; state.selectedNote = n.id; state.selectedDevice = null;
+  state.sideTab = 'detail';
+  renderAll();
+}
+function rebuildGroups(){
+  const g = LAYERS.gGroups; g.textContent = '';
+  if (state.view !== 'physical') return;
+  const groups = {};
+  state.devices.forEach(d => (groups[d.location || '未設定'] = groups[d.location || '未設定'] || []).push(d));
+  for (const [loc, arr] of Object.entries(groups)){
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    arr.forEach(d => { const p = nodePos(d);
+      x1 = Math.min(x1, p.x); y1 = Math.min(y1, p.y);
+      x2 = Math.max(x2, p.x + NODE_W); y2 = Math.max(y2, p.y + NODE_H); });
+    const pad = 26;
+    g.append(el('rect', { class: 'grp-box', x: x1 - pad, y: y1 - pad - 14, width: x2 - x1 + pad * 2, height: y2 - y1 + pad * 2 + 14, rx: 12 }));
+    g.append(el('text', { class: 'grp-lbl', x: x1 - pad + 12, y: y1 - pad + 4 }, '📍 ' + loc));
+  }
+}
+
+function renderLegend(){
+  const g = LAYERS.gLegend; g.textContent = '';
+  if (state.view === 'l3'){
+    const rows = [
+      { type: 'seg',  label: 'セグメント(サブネット)' },
+      { type: 'line', stroke: '#3E7CB1', width: 2,   dash: '',    label: 'SVI / L3インターフェース' },
+      { type: 'line', stroke: '#51617E', width: 2.6, dash: '',    label: 'ルーテッドP2P(対向接続)' },
+      { type: 'line', stroke: '#ADBCC9', width: 1.3, dash: '3 4', label: '物理配線(参考)' },
+    ];
+    const w = 186, h = rows.length * 20 + 14;
+    const x0 = LAYERS.w - w - 16, y0 = 14;
+    g.append(el('rect', { x: x0, y: y0, width: w, height: h, rx: 8, fill: '#FFF', stroke: '#B7C6D3', 'stroke-width': 1 }));
+    rows.forEach((r, i) => {
+      const y = y0 + 20 + i * 20;
+      if (r.type === 'seg'){
+        g.append(el('rect', { x: x0 + 10, y: y - 7, width: 34, height: 14, rx: 7,
+          fill: tint('#3E7CB1', 0.9), stroke: '#3E7CB1', 'stroke-width': 1.4 }));
+      } else {
+        g.append(el('line', { x1: x0 + 10, y1: y, x2: x0 + 44, y2: y,
+          stroke: r.stroke, 'stroke-width': r.width, 'stroke-dasharray': r.dash }));
+      }
+      g.append(el('text', { x: x0 + 52, y: y + 4, 'font-size': 11, fill: '#33465C' }, r.label));
+    });
+    return;
+  }
+  const items = Object.entries(MEDIA_STYLE).filter(([k]) => k !== 'unknown' || state.links.some(l => l.media === 'unknown'));
+  const w = 118, h = items.length * 20 + 14;
+  const x0 = LAYERS.w - w - 16, y0 = 14;
+  g.append(el('rect', { x: x0, y: y0, width: w, height: h, rx: 8, fill: '#FFF', stroke: '#B7C6D3', 'stroke-width': 1 }));
+  items.forEach(([k, st], i) => {
+    const y = y0 + 20 + i * 20;
+    g.append(el('line', { x1: x0 + 10, y1: y, x2: x0 + 44, y2: y, stroke: st.stroke, 'stroke-width': st.width, 'stroke-dasharray': st.dash }));
+    g.append(el('text', { x: x0 + 52, y: y + 4, 'font-size': 11, fill: '#33465C' },
+      { fiber: '光ファイバ', utp: 'UTP(メタル)', dac: 'DAC', unknown: '不明' }[k]));
+  });
+}
+
+// ---------------- drag (差分更新・全再描画なし) ----------------
+let _raf = 0;
+const _dragDevs = new Set();
+function scheduleLinkRebuild(devIds){
+  if (devIds) (Array.isArray(devIds) ? devIds : [devIds]).forEach(id => _dragDevs.add(id));
+  if (_raf) return;
+  _raf = requestAnimationFrame(() => {
+    _raf = 0;
+    if (_dragDevs.size > 10){ _dragDevs.clear(); rebuildLinks(); }
+    else if (_dragDevs.size){ for (const id of _dragDevs) rebuildLinks(id); _dragDevs.clear(); }
+    else rebuildLinks();
+    if (state.view === 'physical') rebuildGroups();
+  });
+}
+function enableDrag(grp, id, onClick){
+  let st = null;
+  grp.addEventListener('pointerdown', ev => {
+    ev.preventDefault(); ev.stopPropagation();
+    try { grp.setPointerCapture(ev.pointerId); } catch {}
+    const targets = (isSelected(id) && state.sel.length > 1) ? [...state.sel] : [id];
+    const starts = new Map();
+    for (const tid of targets){
+      if (String(tid).startsWith('seg:')){
+        const p = state.l3SegPos[String(tid).slice(4)] || { x: 100, y: 100 };
+        starts.set(tid, { ...p }); continue;
+      }
+      const d = devById(tid);
+      if (d){ starts.set(tid, { ...nodePos(d) }); continue; }
+      const n = state.notes.find(x => x.id === tid);
+      if (n) starts.set(tid, { x: n.x, y: n.y });
+    }
+    st = { mx: ev.clientX, my: ev.clientY, targets, starts, moved: false, shift: ev.shiftKey };
+  });
+  grp.addEventListener('pointermove', ev => {
+    if (!st) return;
+    const z = state.zoom || 1;
+    const dx = (ev.clientX - st.mx) / z, dy = (ev.clientY - st.my) / z;
+    if (Math.abs(dx) + Math.abs(dy) > 2) st.moved = true;
+    if (!st.moved) return;
+    applyDragDelta(st, dx, dy);
+  });
+  const end = () => {
+    if (!st) return;
+    const { moved, shift } = st; st = null;
+    if (moved){ growCanvasIfNeeded(); scheduleAutosave(); }
+    else onClick(shift);
+  };
+  grp.addEventListener('pointerup', end);
+  grp.addEventListener('pointercancel', end);
+}
+function applyDragDelta(st, dx, dy){
+  const devIds = [];
+  let segMoved = false;
+  for (const tid of st.targets){
+    const s = st.starts.get(tid); if (!s) continue;
+    if (String(tid).startsWith('seg:')){
+      const key = String(tid).slice(4);
+      const nx = Math.max(10, s.x + dx), ny = Math.max(34, s.y + dy);
+      state.l3SegPos[key] = { x: nx, y: ny };
+      const g = SEG_ELS.get(tid);
+      if (g) g.setAttribute('transform', `translate(${nx},${ny})`);
+      segMoved = true;
+      continue;
+    }
+    const d = devById(tid);
+    if (d){
+      const nx = Math.max(10, s.x + dx), ny = Math.max(34, s.y + dy);
+      setNodePos(d, { x: nx, y: ny });
+      const g = NODE_ELS.get(tid);
+      if (g) g.setAttribute('transform', `translate(${nx},${ny})`);
+      devIds.push(tid);
+      continue;
+    }
+    const n = state.notes.find(x => x.id === tid);
+    if (n){
+      n.x = Math.max(10, s.x + dx); n.y = Math.max(20, s.y + dy);
+      const g = NOTE_ELS.get(tid);
+      if (g) g.setAttribute('transform', `translate(${n.x},${n.y})`);
+    }
+  }
+  if (devIds.length || segMoved) scheduleLinkRebuild(devIds);
+}
+
+// ---------------- rendering: side panel ----------------
+function renderSide(){
+  const body = $('#sideBody'); body.innerHTML = '';
+  document.querySelectorAll('.side-tabs button').forEach(b =>
+    b.classList.toggle('on', b.dataset.st === state.sideTab));
+  if (state.sideTab === 'devices') renderSideDevices(body);
+  else if (state.sideTab === 'links') renderSideLinks(body);
+  else renderSideDetail(body);
+}
+
+function renderSideDevices(body){
+  body.append(el('h3', {}, 'コンフィグ貼り付け(show run / 複数台まとめて可)'));
+  const ta = el('textarea', { rows: 8, placeholder: 'hostname CORE-SW1\n!\ninterface TenGigabitEthernet1/0/1\n description to DIST-SW1 Te1/0/49\n switchport mode trunk\n ...\n\n※ hostname 行ごとに自動で機器分割されます' });
+  body.append(ta);
+  body.append(el('div', { style: 'margin:8px 0 4px;display:flex;gap:8px' },
+    el('button', { class: 'btn primary', onclick: () => { importConfigs(ta.value); ta.value = ''; } }, '解析して追加'),
+  ));
+
+  body.append(el('h3', {}, 'サーバ・Cisco以外の機器を追加'));
+  const cName = el('input', { type: 'text', placeholder: '名前 (例: SRV-01)', style: 'width:100%;margin-bottom:5px' });
+  const cType = el('select', { style: 'width:100%;margin-bottom:5px' });
+  Object.entries(CTYPES).forEach(([k, c]) => cType.append(el('option', { value: k }, c.label)));
+  const cPorts = el('input', { type: 'text', value: 'eth0, eth1', style: 'width:100%;margin-bottom:5px' });
+  const cIp = el('input', { type: 'text', placeholder: '代表IP (任意)', style: 'width:100%;margin-bottom:6px' });
+  body.append(cName, cType,
+    el('div', { style: 'font-size:10.5px;color:var(--txt-dim);margin-bottom:2px' }, 'ポート名(カンマ区切り)'),
+    cPorts, cIp,
+    el('div', { style: 'margin-bottom:6px' },
+      el('button', { class: 'btn', onclick: () => {
+        const nm = cName.value.trim();
+        if (!nm) return toast('名前を入力してください');
+        if (state.devices.some(d => d.hostname === nm)) return toast('同名の機器が既に存在します');
+        const ports = cPorts.value.split(',').map(s => s.trim()).filter(Boolean);
+        state.devices.push(makeCustomDevice(nm, cType.value, ports, cIp.value.trim()));
+        cName.value = ''; cIp.value = '';
+        const n = inferLinksFromDescriptions();
+        toast('追加しました' + (n ? `(descriptionから接続 ${n} 本を推定)` : ''));
+        renderAll();
+      } }, '+ オブジェクト追加')));
+
+  body.append(el('h3', {}, 'show interface status 貼り付け(媒体UTP/光の更新)'));
+  const stSel = el('select', { style: 'width:100%;margin-bottom:5px' },
+    el('option', { value: '' }, '── プロンプト行から自動判別(推奨) ──'));
+  state.devices.forEach(d => stSel.append(el('option', { value: d.id }, d.hostname)));
+  const stTa = el('textarea', { rows: 5, placeholder: 'FLC1K1-4506E-01#show interface status\nPort  Name  Status  Vlan  Duplex  Speed Type\nGi3/2 ...  connected trunk full a-1000 1000BaseSX\n\n※ 複数機器分まとめて貼り付け可(プロンプト行で区切り)' });
+  body.append(stSel, stTa,
+    el('div', { style: 'margin:6px 0 2px' },
+      el('button', { class: 'btn', onclick: () => { importIfStatus(stTa.value, stSel.value); stTa.value = ''; } }, 'ステータス取込')));
+
+  body.append(el('h3', {}, 'show mac address-table / show arp 貼り付け(末端機器の自動生成)'));
+  const maSel = el('select', { style: 'width:100%;margin-bottom:5px' },
+    el('option', { value: '' }, '── プロンプト行から自動判別(推奨) ──'));
+  state.devices.filter(d => !d.custom).forEach(d => maSel.append(el('option', { value: d.id }, d.hostname)));
+  const maTa = el('textarea', { rows: 5, placeholder: 'SW-01#show mac address-table\n Vlan  Mac Address     Type     Ports\n  10  0050.5689.abcd  DYNAMIC  Gi1/0/5\n...\nRT-01#show ip arp\nInternet 192.168.10.45  5  0050.5689.abcd ARPA Vlan10\n\n※ MACテーブルとARP(IP解決用)をまとめて貼り付け可。複数機器分はプロンプト行で区切り' });
+  body.append(maSel, maTa,
+    el('div', { style: 'margin:6px 0 2px;display:flex;gap:6px;flex-wrap:wrap' },
+      el('button', { class: 'btn primary', onclick: () => {
+        const r = importMacArp(maTa.value, maSel.value);
+        if (!r.nMac && !r.nArp) return toast('MACテーブル/ARPを読み取れませんでした。プロンプト行を含めるか機器を選択してください');
+        const g = generateEdgeDevices();
+        maTa.value = '';
+        commitHistory();
+        toast(`取込: MAC ${r.nMac}件 / ARP ${r.nArp}件 → 末端グループ ${g.nGroups}個(${g.nHosts}台)を生成` +
+          (g.nSkipUplink ? ` / ${g.nSkipUplink}ポートは多数学習のため除外` : ''));
+        renderAll();
+      } }, '取込して末端機器を生成'),
+      el('button', { class: 'btn ghost', onclick: () => {
+        const g = generateEdgeDevices();
+        commitHistory();
+        toast(g.nGroups ? `末端グループ ${g.nGroups}個(${g.nHosts}台)を再生成しました` : '取込済みのMACテーブルがありません');
+        renderAll();
+      } }, '再生成'),
+      el('button', { class: 'btn ghost', onclick: () => {
+        const n = state.devices.filter(d => d.autoEdge).length;
+        const ids = new Set(state.devices.filter(d => d.autoEdge).map(d => d.id));
+        state.devices = state.devices.filter(d => !d.autoEdge);
+        state.links = state.links.filter(l => !ids.has(l.a.dev) && !ids.has(l.b.dev));
+        commitHistory();
+        toast(n ? `末端グループ ${n}個を削除しました` : '末端グループはありません');
+        renderAll();
+      } }, 'グループ削除')));
+  body.append(el('div', { class: 'hint', style: 'margin-bottom:8px' },
+    'アクセスポート(配線登録なし・Poメンバー以外・学習MAC ' + EDGE_MAX_MACS + '件以下)のMACを、スイッチ×種別ごとに1ノードへ集約します。種別はOUI・ポートdescription・VLAN名から推定(既定はPC)。ARPを貼るとIPも表示されます。'));
+
+  body.append(el('h3', {}, `機器一覧(${state.devices.length}台)`));
+  const roots = stpRoots();
+  const frag = document.createDocumentFragment();
+  for (const d of state.devices){
+    const nPhys = Object.keys(d.interfaces).filter(isPhysicalIf).length;
+    const card = el('div', { class: 'dev-card' + (state.selectedDevice === d.id ? ' sel' : '') });
+    const nm = el('div', { class: 'nm' }, d.hostname);
+    if (roots[d.id]) nm.append(el('span', { class: 'badge root' }, 'STP ROOT'));
+    if (d.isL3) nm.append(el('span', { class: 'badge l3' }, 'L3'));
+    nm.append(el('button', { class: 'del', title: '削除', onclick: (e) => {
+      e.stopPropagation();
+      state.links = state.links.filter(l => l.a.dev !== d.id && l.b.dev !== d.id);
+      state.devices = state.devices.filter(x => x.id !== d.id);
+      state.sel = state.sel.filter(x => x !== d.id);
+      if (state.selectedDevice === d.id) state.selectedDevice = null;
+      renderAll();
+    } }, '✕'));
+    card.append(nm);
+    card.append(el('div', { class: 'meta' }, d.custom
+      ? `${(CTYPES[d.ctype] || CTYPES.other).label} / Port ${nPhys} / 設置: ${d.location || '未設定'}`
+      : `IF ${nPhys} / VLAN ${Object.keys(d.vlans).length} / 設置: ${d.location || '未設定'}`));
+    card.addEventListener('click', () => {
+      state.selectedDevice = d.id; state.sel = [d.id]; state.selectedNote = null;
+      state.sideTab = 'detail'; renderAll();
+    });
+    frag.append(card);
+  }
+  body.append(frag);
+  if (!state.devices.length)
+    body.append(el('div', { class: 'hint' }, 'まだ機器がありません。上にコンフィグを貼り付けるか「サンプル読込」を押してください。'));
+}
+
+function renderSideLinks(body){
+  body.append(el('h3', {}, 'CDPネイバー貼り付け(show cdp neighbors detail)'));
+  const sel = el('select', { style: 'width:100%;margin-bottom:6px' },
+    el('option', { value: '' }, '── 出力元の機器を選択 ──'));
+  state.devices.forEach(d => sel.append(el('option', { value: d.id }, d.hostname)));
+  const ta = el('textarea', { rows: 5, placeholder: 'Device ID: DIST-SW1\n...\nInterface: TenGigabitEthernet1/0/1,  Port ID (outgoing port): TenGigabitEthernet1/0/49' });
+  body.append(sel, ta,
+    el('div', { style: 'margin:8px 0' },
+      el('button', { class: 'btn', onclick: () => parseCdp(ta.value, sel.value) }, 'CDP解析'),
+      ' ',
+      el('button', { class: 'btn ghost', onclick: () => { const n = inferLinksFromDescriptions(); toast(`descriptionから ${n} 本追加`); renderAll(); } }, 'descriptionから再推定')));
+
+  const unres = unresolvedDescs();
+  if (unres.length){
+    body.append(el('h3', {}, `未解決のdescription(${unres.length}件)`));
+    body.append(el('div', { style: 'font-size:10.5px;color:var(--txt-dim);margin-bottom:6px' },
+      '接続先らしき記載があるのに機器と一致しなかったポートです。誤記の可能性があります。'));
+    const shown = unres.slice(0, 30);
+    for (const r of shown){
+      const box = el('div', { class: 'dev-card', style: 'cursor:default' });
+      box.append(el('div', { style: 'font-family:var(--mono);font-size:11px;font-weight:700' },
+        `${r.dev.hostname} ${shortIf(r.port)}`));
+      box.append(el('div', { style: 'font-size:10.5px;color:var(--txt-dim);word-break:break-all' },
+        'desc: ' + clipUnits(r.desc, 52)));
+      if (r.cand && r.rport){
+        const row = el('div', { style: 'margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap' });
+        row.append(el('span', { style: 'font-size:10.5px;color:#F3E4BE' },
+          (r.dist === 0 ? '候補: ' : `類似候補(誤記?): `) + r.cand.hostname + ' ' + shortIf(r.rport)));
+        row.append(el('button', { class: 'btn ghost', style: 'padding:2px 10px;font-size:11px', onclick: () => {
+          const a = { dev: r.dev.id, port: r.port }, b = { dev: r.cand.id, port: r.rport };
+          if (linkExists(a, b)) return toast('既に接続があります');
+          state.links.push({ id: uid(), a, b, media: decideMedia(a, b), source: 'desc' });
+          toast(`接続しました: ${r.dev.hostname} ${shortIf(r.port)} ↔ ${r.cand.hostname} ${shortIf(r.rport)}`);
+          renderAll();
+        } }, 'この候補で接続'));
+        box.append(row);
+      }
+      body.append(box);
+    }
+    if (unres.length > 30)
+      body.append(el('div', { class: 'hint', style: 'margin-bottom:8px' }, `他 ${unres.length - 30} 件`));
+  }
+
+  body.append(el('h3', {}, `接続一覧(${state.links.length}本)`));
+  const tbl = el('table', { class: 'conn' });
+  tbl.append(el('tr', {}, el('th', {}, '機器A / ポート'), el('th', {}, '機器B / ポート'), el('th', {}, '種別'), el('th', {}, '')));
+  const mediaJa = { fiber: '光', utp: 'UTP', dac: 'DAC', unknown: '?' };
+  const devOpts = (cur) => {
+    const s = el('select');
+    state.devices.forEach(d => s.append(el('option', { value: d.id, ...(d.id === cur ? { selected: '' } : {}) }, d.hostname)));
+    return s;
+  };
+  const portOpts = (devId, cur) => {
+    const s = el('select');
+    const d = devById(devId);
+    const ports = d ? Object.keys(d.interfaces).filter(isPhysicalIf) : [];
+    if (cur && !ports.includes(cur)) ports.unshift(cur);
+    ports.forEach(p => s.append(el('option', { value: p, ...(p === cur ? { selected: '' } : {}) }, shortIf(p))));
+    return s;
+  };
+  const frag = document.createDocumentFragment();
+  for (const l of state.links){
+    const tr = el('tr');
+    if (editingLink === l.id){
+      const dA = devOpts(l.a.dev), pA = portOpts(l.a.dev, l.a.port);
+      const dB = devOpts(l.b.dev), pB = portOpts(l.b.dev, l.b.port);
+      dA.onchange = () => { l.a.dev = dA.value; l.a.port = Object.keys(devById(dA.value).interfaces).filter(isPhysicalIf)[0] || ''; renderAll(); };
+      pA.onchange = () => { l.a.port = pA.value; renderCanvas(); };
+      dB.onchange = () => { l.b.dev = dB.value; l.b.port = Object.keys(devById(dB.value).interfaces).filter(isPhysicalIf)[0] || ''; renderAll(); };
+      pB.onchange = () => { l.b.port = pB.value; renderCanvas(); };
+      const med = el('select');
+      [['fiber','光'],['utp','UTP'],['dac','DAC'],['unknown','?']].forEach(([v,lbl]) =>
+        med.append(el('option', { value: v, ...(v === l.media ? { selected: '' } : {}) }, lbl)));
+      med.onchange = () => { l.media = med.value; renderCanvas(); };
+      tr.append(
+        el('td', {}, dA, pA), el('td', {}, dB, pB), el('td', {}, med),
+        el('td', {}, el('button', { class: 'btn ghost', style: 'padding:2px 6px;font-size:11px', onclick: () => { editingLink = null; renderSide(); } }, '完了')));
+    } else {
+      const dA = devById(l.a.dev), dB = devById(l.b.dev);
+      const cell = (d, port) => el('td', { style: 'font-family:var(--mono)' },
+        el('div', { style: 'font-weight:700' }, d?.hostname || '?'),
+        el('div', { style: 'color:var(--txt-dim)' }, shortIf(port)));
+      tr.append(
+        cell(dA, l.a.port), cell(dB, l.b.port),
+        el('td', {}, mediaJa[l.media] || '?', el('div', {}, el('span', { class: 'src-tag ' + l.source }, { desc: 'desc', cdp: 'CDP', manual: '手動' }[l.source] || l.source))),
+        el('td', {},
+          el('button', { class: 'del', style: 'color:var(--accent)', title: '編集', onclick: () => { editingLink = l.id; renderSide(); } }, '✎'),
+          el('button', { class: 'del', title: '削除', onclick: () => { state.links = state.links.filter(x => x !== l); renderAll(); } }, '✕')));
+    }
+    frag.append(tr);
+  }
+  tbl.append(frag);
+  body.append(tbl);
+  body.append(el('div', { style: 'margin-top:8px' },
+    el('button', { class: 'btn', onclick: () => {
+      if (state.devices.length < 1) return toast('先に機器を追加してください');
+      const d0 = state.devices[0];
+      const p0 = Object.keys(d0.interfaces).filter(isPhysicalIf)[0] || 'GigabitEthernet0/1';
+      const nl = { id: uid(), a: { dev: d0.id, port: p0 }, b: { dev: (state.devices[1]||d0).id, port: p0 }, media: 'utp', source: 'manual' };
+      state.links.push(nl); editingLink = nl.id;
+      renderAll();
+    } }, '+ 接続を手動追加')));
+}
+
+function colorEditor(body, d){
+  body.append(el('h3', {}, '塗りつぶし色'));
+  const row = el('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' });
+  const presets = ['#FFFFFF','#FFE9C7','#DFF2D8','#D8E9F7','#F6D9D9','#EFE3F7','#FFF7CC','#5B6B7A'];
+  presets.forEach(c => row.append(el('button', { class: 'swatch', style: 'background:' + c, title: c,
+    onclick: () => { d.color = c === '#FFFFFF' ? '' : c; renderCanvas(); scheduleAutosave(); } })));
+  const inp = el('input', { type: 'color', value: /^#[0-9a-fA-F]{6}$/.test(d.color || '') ? d.color : '#ffffff',
+    style: 'width:36px;height:26px;padding:0;border:1px solid var(--line);background:none;cursor:pointer' });
+  inp.addEventListener('input', () => { d.color = inp.value; renderCanvas(); scheduleAutosave(); });
+  row.append(inp);
+  row.append(el('button', { class: 'btn ghost', style: 'padding:3px 10px;font-size:11px',
+    onclick: () => { d.color = ''; renderCanvas(); scheduleAutosave(); } }, '標準に戻す'));
+  body.append(row);
+}
+
+function locDatalist(){
+  const dl = el('datalist', { id: 'locList' });
+  [...new Set(state.devices.map(d => d.location).filter(Boolean))].sort()
+    .forEach(l => dl.append(el('option', { value: l })));
+  return dl;
+}
+function renderBulkPanel(body, selDevs){
+  body.append(el('h3', {}, `複数選択中(${selDevs.length}台)`));
+  body.append(el('div', { style: 'font-size:11px;color:var(--txt-dim);margin-bottom:8px;word-break:break-all' },
+    selDevs.slice(0, 8).map(d => d.hostname).join(', ') + (selDevs.length > 8 ? ` 他${selDevs.length - 8}台` : '')));
+
+  body.append(el('h3', {}, '設置場所を一括設定(物理図のグループ)'));
+  const locIn = el('input', { type: 'text', list: 'locList', style: 'width:100%',
+    placeholder: '例: 本社3F サーバ室 Rack-A(入力候補から選択可)' });
+  const common = [...new Set(selDevs.map(d => d.location || ''))];
+  if (common.length === 1 && common[0]) locIn.value = common[0];
+  body.append(locIn, locDatalist());
+  body.append(el('div', { style: 'margin-top:8px;display:flex;gap:8px' },
+    el('button', { class: 'btn primary', onclick: () => {
+      const v = locIn.value.trim();
+      selDevs.forEach(d => d.location = v);
+      toast(`${selDevs.length}台の設置場所を「${v || '未設定'}」にしました`);
+      renderAll();
+    } }, `${selDevs.length}台に一括設定`),
+    el('button', { class: 'btn ghost', onclick: () => {
+      state.sel = []; refreshSelClasses(); renderSide();
+    } }, '選択解除')));
+  body.append(el('div', { style: 'margin-top:10px;font-size:11px;color:var(--txt-dim)' },
+    '空欄で設定すると「未設定」グループに移動します。物理図でグループ枠に即反映されます。'));
+}
+
+function renderNoteDetail(body, n){
+  body.append(el('h3', {}, 'コメント編集(' + (n.view === 'logical' ? '論理図' : '物理図') + 'に表示)'));
+  const ta = el('textarea', { rows: 4 });
+  ta.value = n.text;
+  ta.addEventListener('input', () => { n.text = ta.value; renderNotes(); scheduleAutosave(); });
+  body.append(ta);
+  body.append(el('h3', {}, '吹き出しの色'));
+  const row = el('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' });
+  ['#FFF7CC','#FFE0E0','#DCF0FF','#DFF2D8','#EFE3F7','#F0F2F5','#5B6B7A'].forEach(c =>
+    row.append(el('button', { class: 'swatch', style: 'background:' + c,
+      onclick: () => { n.color = c; renderNotes(); scheduleAutosave(); } })));
+  body.append(row);
+  body.append(el('div', { style: 'margin-top:14px' },
+    el('button', { class: 'btn', style: 'color:var(--danger);border-color:var(--danger)',
+      onclick: () => {
+        state.notes = state.notes.filter(x => x.id !== n.id);
+        state.selectedNote = null; state.sel = state.sel.filter(x => x !== n.id);
+        renderAll();
+      } }, 'このコメントを削除')));
+  body.append(el('div', { style: 'margin-top:10px;font-size:11px;color:var(--txt-dim)' },
+    '改行で複数行にできます。図上でドラッグして移動できます。'));
+}
+
+function renderCustomDetail(body, d){
+  if (d.autoEdge){
+    const sw = devById(d.autoEdge.sw);
+    body.append(el('h3', {}, `末端機器グループ(${(CTYPES[d.autoEdge.type] || CTYPES.other).label})`));
+    body.append(el('div', { class: 'hint', style: 'margin-bottom:6px' },
+      `${sw ? sw.hostname : '?'} 配下 ${d.autoEdge.hosts.length}台。MACテーブル/ARPから自動生成(再生成で更新されます)。`));
+    const ht = el('table', { class: 'if' });
+    ht.append(el('tr', {}, el('th', {}, 'ポート'), el('th', {}, 'MAC'), el('th', {}, 'IP'), el('th', {}, 'VLAN'), el('th', {}, 'ベンダ')));
+    const hosts = [...d.autoEdge.hosts].sort((a, b) => a.port.localeCompare(b.port, undefined, { numeric: true }));
+    for (const h of hosts.slice(0, 300))
+      ht.append(el('tr', {}, el('td', {}, shortIf(h.port)),
+        el('td', { style: 'font-family:var(--mono)' }, h.mac),
+        el('td', { style: 'font-family:var(--mono)' }, h.ip || '-'),
+        el('td', {}, String(h.vlan)), el('td', {}, h.vendor || '-')));
+    body.append(ht);
+    if (hosts.length > 300) body.append(el('div', { class: 'hint' }, `…他 ${hosts.length - 300}台`));
+  }
+  body.append(el('h3', {}, 'オブジェクト編集'));
+  const kv = el('div', { class: 'kv' });
+  const nmIn = el('input', { type: 'text', value: d.hostname });
+  nmIn.addEventListener('change', () => {
+    const v = nmIn.value.trim();
+    if (!v) return;
+    if (state.devices.some(x => x !== d && x.hostname === v)) return toast('同名の機器が既に存在します');
+    d.hostname = v; renderAll();
+  });
+  const tySel = el('select');
+  Object.entries(CTYPES).forEach(([k, c]) =>
+    tySel.append(el('option', { value: k, ...(k === d.ctype ? { selected: '' } : {}) }, c.label)));
+  tySel.addEventListener('change', () => { d.ctype = tySel.value; renderAll(); });
+  const ipIn = el('input', { type: 'text', value: d.mgmtIp || '', placeholder: '例: 192.168.1.10' });
+  ipIn.addEventListener('change', () => { d.mgmtIp = ipIn.value.trim(); renderAll(); });
+  kv.append(el('b', {}, '名前'), nmIn);
+  kv.append(el('b', {}, '種別'), tySel);
+  kv.append(el('b', {}, '代表IP'), ipIn);
+  const nLinks = state.links.filter(l => l.a.dev === d.id || l.b.dev === d.id).length;
+  kv.append(el('b', {}, '接続数'), el('span', {}, nLinks + ' 本'));
+  body.append(kv);
+
+  body.append(el('h3', {}, 'ポート(カンマ区切りで編集)'));
+  const portsIn = el('input', { type: 'text', value: Object.keys(d.interfaces).join(', '), style: 'width:100%' });
+  portsIn.addEventListener('change', () => {
+    const names = portsIn.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!names.length) return toast('ポートを1つ以上指定してください');
+    const old = d.interfaces; d.interfaces = {};
+    names.forEach(n => d.interfaces[n] = old[n] || newIfEntry('utp'));
+    renderAll();
+  });
+  body.append(portsIn,
+    el('div', { style: 'font-size:10.5px;color:var(--txt-dim);margin-top:4px' },
+      '※ 接続の追加・ケーブル種別は「接続」タブで設定できます'));
+
+  body.append(el('h3', {}, '設置場所(物理図のグループ)'));
+  const locIn = el('input', { type: 'text', list: 'locList', value: d.location || '', placeholder: '例: 本社3F サーバ室 Rack-A', style: 'width:100%' });
+  locIn.addEventListener('change', () => { d.location = locIn.value.trim(); renderAll(); });
+  body.append(locIn, locDatalist());
+}
+
+function renderSideDetail(body){
+  const selDevs = state.sel.map(devById).filter(Boolean);
+  if (selDevs.length >= 2){ renderBulkPanel(body, selDevs); return; }
+  if (state.selectedNote){
+    const n = state.notes.find(x => x.id === state.selectedNote);
+    if (n){ renderNoteDetail(body, n); return; }
+  }
+  const d = devById(state.selectedDevice);
+  if (!d){ body.append(el('div', { class: 'hint' }, '図の機器または「機器」タブのカードをクリックすると詳細を表示します。')); return; }
+  if (d.custom){ renderCustomDetail(body, d); colorEditor(body, d); return; }
+  body.append(el('h3', {}, '機器詳細'));
+  const kv = el('div', { class: 'kv' });
+  kv.append(el('b', {}, 'ホスト名'), el('span', { style: 'font-family:var(--mono);font-weight:700' }, d.hostname));
+  kv.append(el('b', {}, 'STPモード'), el('span', {}, d.stp.mode || '-'));
+  const pri = Object.entries(d.stp.priorities).map(([v,p])=>`VLAN${v}:${p}`).join(', ');
+  kv.append(el('b', {}, 'STP priority'), el('span', {}, pri || '-'));
+  kv.append(el('b', {}, '種別'), el('span', {}, kindLabel(d)));
+  const dtSel = el('select');
+  const dtOpts = [['', '自動判定'], ['sw', 'L2スイッチ'], ['l3sw', 'L3スイッチ'], ['router', 'ルーター'],
+    ...Object.entries(CTYPES).map(([k, c]) => [k, c.label])];
+  dtOpts.forEach(([v, lbl]) => dtSel.append(el('option', { value: v, ...(v === (d.dispType || '') ? { selected: '' } : {}) }, lbl)));
+  dtSel.addEventListener('change', () => { d.dispType = dtSel.value; renderAll(); });
+  kv.append(el('b', {}, '表示種別'), dtSel);
+  if (stackCount(d) > 1)
+    kv.append(el('b', {}, 'スタック'), el('span', {},
+      Object.entries(d.stack).map(([n, mo]) => '#' + n + (mo ? ' ' + mo : '')).join(' / ')));
+  kv.append(el('b', {}, 'ルーティング'), el('span', {}, routingStr(d) || '-'));
+  kv.append(el('b', {}, 'ACL'), el('span', {},
+    (d.acls || []).length ? d.acls.length + '個 (' + d.acls.join(', ').slice(0, 48) + ')' : '-'));
+  kv.append(el('b', {}, 'VLAN'), el('span', {}, Object.entries(d.vlans).map(([v,n])=>n?`${v}(${n})`:v).join(', ') || '-'));
+  body.append(kv);
+
+  body.append(el('h3', {}, '設置場所(物理図のグループ)'));
+  const locIn = el('input', { type: 'text', list: 'locList', value: d.location || '', placeholder: '例: 本社3F サーバ室 Rack-A', style: 'width:100%' });
+  locIn.addEventListener('change', () => { d.location = locIn.value.trim(); renderAll(); });
+  body.append(locIn, locDatalist());
+  colorEditor(body, d);
+
+  const svis = Object.entries(d.interfaces).filter(([p, it]) => !isPhysicalIf(p) && (it.ip || (it.ips || []).length));
+  if (svis.length){
+    body.append(el('h3', {}, 'SVI / 仮想インターフェース'));
+    const st = el('table', { class: 'if' });
+    st.append(el('tr', {}, el('th', {}, 'IF'), el('th', {}, 'IPアドレス'), el('th', {}, 'FHRP仮想IP')));
+    for (const [p, it] of svis)
+      st.append(el('tr', {}, el('td', {}, shortIf(p)),
+        el('td', {}, (it.ips && it.ips.length ? it.ips : [it.ip]).map(ipDisp).join(', ')),
+        el('td', {}, (it.fhrp || []).map(f => `${f.type}${f.grp}:${f.vip}`).join(' '))));
+    body.append(st);
+  }
+
+  body.append(el('h3', {}, 'インターフェース'));
+  const tbl = el('table', { class: 'if' });
+  tbl.append(el('tr', {}, el('th', {}, 'Port'), el('th', {}, 'Mode/VLAN'), el('th', {}, 'Po'), el('th', {}, '媒体'), el('th', {}, 'Description')));
+  const mediaColor = { fiber: 'var(--fiber)', utp: 'var(--utp)', dac: 'var(--dac)', unknown: '#888' };
+  const frag = document.createDocumentFragment();
+  for (const [p, it] of Object.entries(d.interfaces)){
+    if (!isPhysicalIf(p) && !(it.dot1q || it.ip)) continue;
+    if (/^Vlan/.test(p)) continue; // SVIは上の表に表示済み
+    let vl = it.mode === 'trunk' ? 'trunk ' + (it.trunkVlans.length ? vlanRangeStr(it.trunkVlans) : 'all')
+      : (it.mode === 'routed' || it.ip) ? 'L3 ' + ipDisp(it.ip)
+      : it.dot1q ? 'dot1Q ' + it.dot1q + (it.ip ? ' ' + ipDisp(it.ip) : '')
+      : it.accessVlan ? 'acc ' + it.accessVlan : (it.mode || '-');
+    if (it.dot1q && it.mode !== 'trunk' && (it.mode === 'routed' || it.ip)) vl = 'dot1Q ' + it.dot1q + ' ' + ipDisp(it.ip);
+    if ((it.fhrp || []).length) vl += ' ' + it.fhrp.map(f => f.type + f.grp).join(',');
+    if (it.shutdown) vl += ' [shut]';
+    frag.append(el('tr', {},
+      el('td', {}, shortIf(p)),
+      el('td', {}, vl),
+      el('td', {}, it.channelGroup ? 'Po' + it.channelGroup : ''),
+      el('td', {}, el('span', { class: 'media-pill', style: 'background:' + mediaColor[it.media || 'unknown'] }), it.media === 'fiber' ? '光' : it.media === 'dac' ? 'DAC' : it.media === 'utp' ? 'UTP' : '?'),
+      el('td', {}, it.desc || '')));
+  }
+  tbl.append(frag);
+  body.append(tbl);
+}
+
+// ---------------- export ----------------
+function svgForExport(){
+  const svg = $('#diagramSvg');
+  if (!svg) return null;
+  const clone = svg.cloneNode(true);
+  clone.style.backgroundImage = 'none'; clone.style.width = ''; clone.style.height = '';
+  inlineStyles(svg, clone);
+  const w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+  const ns = 'http://www.w3.org/2000/svg';
+  const bg = document.createElementNS(ns, 'rect');
+  bg.setAttribute('x', 0); bg.setAttribute('y', 0);
+  bg.setAttribute('width', w); bg.setAttribute('height', h);
+  bg.setAttribute('fill', '#FFFFFF');
+  clone.insertBefore(bg, clone.firstChild);
+  return { clone, w, h };
+}
+function fileStem(){
+  const base = (state.projectName || 'network').replace(/[\\/:*?"<>|]/g, '_');
+  const v = state.view === 'logical' ? 'logical' : state.view === 'l3' ? 'L3' : 'physical';
+  return `${base}-${v}-${new Date().toISOString().slice(0,10)}`;
+}
+function exportSvg(){
+  if (state.view === 'table'){ toast('一覧表は各表の「CSV出力」ボタンをご利用ください'); return; }
+  const s = svgForExport(); if (!s) return;
+  const xml = new XMLSerializer().serializeToString(s.clone);
+  const blob = new Blob([xml], { type: 'image/svg+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = fileStem() + '.svg'; a.click();
+  URL.revokeObjectURL(a.href);
+  toast('SVGを出力しました。PowerPointに直接挿入でき、拡大しても劣化しません');
+}
+function exportPng(){
+  if (state.view === 'table'){ toast('一覧表は各表の「CSV出力」ボタンをご利用ください'); return; }
+  const s = svgForExport(); if (!s) return;
+  const { w, h } = s;
+  const MAXDIM = 16000;
+  let scale = 2;
+  if (Math.max(w, h) * scale > MAXDIM)
+    scale = Math.max(0.4, Math.floor(MAXDIM / Math.max(w, h) * 10) / 10);
+  const xml = new XMLSerializer().serializeToString(s.clone);
+  const img = new Image();
+  img.onload = () => {
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#FFFFFF'; cx.fillRect(0, 0, cv.width, cv.height);
+    cx.scale(scale, scale); cx.drawImage(img, 0, 0);
+    const a = document.createElement('a');
+    a.href = cv.toDataURL('image/png');
+    a.download = fileStem() + '.png';
+    a.click();
+    toast(`PNGを出力しました(${scale}倍解像度・${cv.width}×${cv.height}px)` +
+      (scale < 2 ? ' ※大規模図のため解像度を自動調整。高精細が必要な場合はSVG出力を推奨' : ''));
+  };
+  img.onerror = () => toast('PNG出力に失敗しました。SVG出力をお試しください');
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+}
+function inlineStyles(src, dst){
+  const sw = src.querySelectorAll('*'), dw = dst.querySelectorAll('*');
+  const props = ['fill','stroke','stroke-width','stroke-dasharray','font-family','font-size','font-weight','opacity','text-anchor'];
+  sw.forEach((s, i) => {
+    const cs = getComputedStyle(s);
+    for (const p of props){
+      const v = cs.getPropertyValue(p);
+      if (v && v !== 'none' || p === 'fill' || p === 'stroke') dw[i].setAttribute(p, v || 'none');
+    }
+    dw[i].removeAttribute('class');
+  });
+}
+
+
+// ---------------- 一覧表ビュー ----------------
+function allVlanIds(){
+  const vs = new Set();
+  state.devices.forEach(d => {
+    Object.keys(d.vlans).forEach(v => vs.add(+v));
+    Object.entries(d.interfaces).forEach(([p, it]) => {
+      const sm = p.match(/^Vlan(\d+)$/); if (sm) vs.add(+sm[1]);
+      if (it.dot1q) vs.add(it.dot1q);
+    });
+  });
+  return [...vs].sort((a, b) => a - b);
+}
+function vlanTable(){
+  const roots = stpRoots();
+  const rootByVlan = {};
+  Object.entries(roots).forEach(([id, vls]) => vls.forEach(v => rootByVlan[v] = devById(id)?.hostname || ''));
+  const rows = [];
+  for (const v of allVlanIds()){
+    const name = state.devices.map(d => d.vlans[v]).find(Boolean) || '';
+    const ipsArr = [], defsArr = [];
+    for (const d of state.devices){
+      const has = (v in d.vlans) || !!d.interfaces['Vlan' + v] ||
+        Object.values(d.interfaces).some(it => it.dot1q === v);
+      if (has) defsArr.push(d.hostname);
+      const svi = d.interfaces['Vlan' + v];
+      if (svi && svi.ip){
+        let s = d.hostname + ': ' + ipDisp(svi.ip);
+        (svi.fhrp || []).forEach(f => s += ` [${f.type}${f.grp} VIP ${f.vip}]`);
+        ipsArr.push(s);
+      }
+    }
+    rows.push([String(v), name, rootByVlan[v] || '', ipsArr.join('\n'), defsArr.join(', ')]);
+  }
+  return { headers: ['VLAN', '名前', 'STPルート', 'SVI IP / 仮想IP', '定義機器'], rows };
+}
+function deviceTable(){
+  const rows = state.devices.map(d => [
+    d.hostname, kindLabel(d),
+    stackCount(d) > 1 ? Object.entries(d.stack).map(([n, mo]) => '#' + n + (mo ? ' ' + mo : '')).join('\n') : '',
+    routingStr(d) || '-',
+    String((d.acls || []).length),
+    String(Object.keys(d.vlans).length),
+    String(Object.keys(d.interfaces).filter(isPhysicalIf).length),
+    d.location || '']);
+  return { headers: ['ホスト名', '種別', 'スタック構成', 'ルーティング', 'ACL数', 'VLAN数', '物理IF数', '設置場所'], rows };
+}
+function ipTable(){
+  const rows = [];
+  for (const d of state.devices){
+    if (d.custom && d.mgmtIp)
+      rows.push([d.hostname, '-', d.mgmtIp, '', '代表IP', (CTYPES[d.ctype] || CTYPES.other).label]);
+    for (const [p, it] of Object.entries(d.interfaces)){
+      if (!it.ip && !(it.ips && it.ips.length)) continue;
+      const ips = (it.ips && it.ips.length ? it.ips : [it.ip]).map(ipDisp).join('\n');
+      const fh = (it.fhrp || []).map(f => `${f.type}${f.grp}: ${f.vip}`).join('\n');
+      const note = /^Vlan/.test(p) ? 'SVI' : it.dot1q ? 'dot1Q ' + it.dot1q : /^Loopback/.test(p) ? 'Loopback' : 'L3';
+      rows.push([d.hostname, shortIf(p), ips, fh, note, it.desc || '']);
+    }
+  }
+  return { headers: ['機器', 'インターフェース', 'IPアドレス', 'FHRP(仮想IP)', '種別', 'Description'], rows };
+}
+function toCsv(tbl){
+  const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+  return '\ufeff' + [tbl.headers.map(esc).join(','), ...tbl.rows.map(r => r.map(esc).join(','))].join('\r\n');
+}
+function downloadCsv(tbl, name){
+  const blob = new Blob([toCsv(tbl)], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function renderTableView(holder){
+  const wrap = el('div', { class: 'list-wrap' });
+  const s = state.search.trim().toLowerCase();
+  const vf = state.vlanFilter;
+  const sections = [
+    ['VLAN一覧', vlanTable(), 'vlan-list.csv', r => vf === '' || r[0] === String(vf)],
+    ['機器一覧', deviceTable(), 'device-list.csv', r => !s || r[0].toLowerCase().includes(s)],
+    ['IPアドレス一覧', ipTable(), 'ip-list.csv', r => !s || r[0].toLowerCase().includes(s)],
+  ];
+  for (const [title, data, fname, pred] of sections){
+    const shown = data.rows.filter(pred);
+    wrap.append(el('h2', {}, `${title}(${shown.length}件)`,
+      el('button', { class: 'csv-btn', onclick: () => downloadCsv({ headers: data.headers, rows: shown }, fname) }, 'CSV出力')));
+    const tbl = el('table', { class: 'list' });
+    tbl.append(el('tr', {}, ...data.headers.map(h => el('th', {}, h))));
+    const frag = document.createDocumentFragment();
+    for (const r of shown){
+      const tr = el('tr');
+      r.forEach((c, i) => {
+        const td = el('td');
+        String(c).split('\n').forEach((line, j) => { if (j) td.append(el('br')); td.append(line); });
+        if (/\d+\.\d+\.\d+/.test(String(c)) || (i === 0 && title !== 'VLAN一覧')) td.classList.add('mono');
+        tr.append(td);
+      });
+      frag.append(tr);
+    }
+    tbl.append(frag);
+    wrap.append(tbl);
+  }
+  if (!state.devices.length)
+    wrap.append(el('div', { style: 'color:#6B8096;font-size:13px' }, '機器がありません。コンフィグを取り込むと一覧が表示されます。'));
+  holder.append(wrap);
+}
+
+// ---------------- JSON save/load ----------------
+function computeSeq(){
+  let mx = 0;
+  const scan = id => { const m = /^id(\d+)$/.exec(id || ''); if (m) mx = Math.max(mx, +m[1]); };
+  state.devices.forEach(d => scan(d.id));
+  state.links.forEach(l => scan(l.id));
+  state.notes.forEach(n => scan(n.id));
+  return mx + 1;
+}
+// 過去バージョンの採番バグ等で重複したIDを修復(後勝ちの方に新IDを振り直す)
+function repairDuplicateIds(){
+  const seen = new Set();
+  let fixed = 0;
+  for (const arr of [state.devices, state.notes, state.links]){
+    for (const o of arr){
+      if (seen.has(o.id)){ o.id = 'id' + (state.seq++); fixed++; }
+      seen.add(o.id);
+    }
+  }
+  return fixed;
+}
+function normalizeState(){
+  normalizeDevices();
+  state.seq = computeSeq();
+  const fixed = repairDuplicateIds();
+  if (fixed) setTimeout(() => toast(`データ内の重複IDを ${fixed} 件修復しました`), 600);
+}
+function normalizeDevices(){
+  state.devices.forEach(d => {
+    d.staticRoutes = d.staticRoutes || 0; d.routing = d.routing || [];
+    d.acls = d.acls || []; d.stack = d.stack || {};
+    if (d.custom && !d.ctype) d.ctype = 'other';
+    if (d.dispType === undefined) d.dispType = '';
+    Object.values(d.interfaces || {}).forEach(it => {
+      it.fhrp = it.fhrp || []; it.ips = it.ips || (it.ip ? [it.ip] : []);
+      if (it.dot1q === undefined) it.dot1q = null;
+    });
+  });
+}
+function buildProjectJson(){
+  return JSON.stringify({ projectName: state.projectName, savedAt: new Date().toISOString(),
+    devices: state.devices, links: state.links, notes: state.notes, l3SegPos: state.l3SegPos, arp: state.arp }, null, 1);
+}
+function downloadBlob(content, type, fname){
+  const blob = new Blob([content], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = fname; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function openSaveDialog(){
+  const dlg = $('#dlgSave'), input = $('#saveName');
+  input.value = state.projectName || 'network-diagram';
+  if (typeof dlg.showModal === 'function') dlg.showModal();
+  else dlg.setAttribute('open', '');
+}
+function closeSaveDialog(){
+  const dlg = $('#dlgSave');
+  if (typeof dlg.close === 'function' && dlg.open) dlg.close();
+  else dlg.removeAttribute('open');
+}
+function doSaveJson(name){
+  const nm = (name || '').trim();
+  if (!nm) return toast('ファイル名を入力してください');
+  state.projectName = nm.replace(/\.json$/i, '');
+  try {
+    downloadBlob(buildProjectJson(), 'application/json', state.projectName + '.json');
+    toast(`保存しました: ${state.projectName}.json`);
+  } catch { toast('保存に失敗しました'); }
+  closeSaveDialog();
+  scheduleAutosave();
+}
+function loadJson(file){
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const j = JSON.parse(r.result);
+      state.devices = j.devices || []; state.links = j.links || [];
+      state.notes = (j.notes || []).map(n => ({ view: 'logical', ...n }));
+      state.l3SegPos = j.l3SegPos || {};
+    state.arp = j.arp || state.arp || {};
+      state.projectName = j.projectName || file.name.replace(/\.json$/i, '');
+      normalizeState();
+      toast('読み込みました: ' + (state.projectName || file.name)); renderAll();
+    } catch { toast('JSONの読み込みに失敗しました'); }
+  };
+  r.readAsText(file);
+}
+
+// ---------------- Undo / Redo ----------------
+const HIST_MAX = 60;
+const _hist = [];
+let _histIdx = -1;
+let _restoring = false;
+function snapshot(){ return JSON.stringify({ devices: state.devices, links: state.links, notes: state.notes, l3SegPos: state.l3SegPos, arp: state.arp }); }
+function commitHistory(){
+  if (_restoring) return;
+  const s = snapshot();
+  if (_histIdx >= 0 && _hist[_histIdx] === s) return;
+  _hist.splice(_histIdx + 1);
+  _hist.push(s);
+  if (_hist.length > HIST_MAX) _hist.shift();
+  _histIdx = _hist.length - 1;
+  updateUndoButtons();
+}
+function restoreSnapshot(s){
+  _restoring = true;
+  try {
+    const j = JSON.parse(s);
+    state.devices = j.devices || []; state.links = j.links || []; state.notes = j.notes || [];
+    state.l3SegPos = j.l3SegPos || {};
+    state.arp = j.arp || state.arp || {};
+    normalizeDevices();
+    state.seq = computeSeq();
+    state.sel = [];
+    if (state.selectedDevice && !devById(state.selectedDevice)) state.selectedDevice = null;
+    if (state.selectedNote && !state.notes.some(n => n.id === state.selectedNote)) state.selectedNote = null;
+    editingLink = null;
+    renderAll();
+  } finally { _restoring = false; }
+}
+function undo(){
+  if (_histIdx <= 0){ toast('これ以上元に戻せません'); return; }
+  _histIdx--;
+  restoreSnapshot(_hist[_histIdx]);
+  updateUndoButtons();
+  toast('元に戻しました (Ctrl+Y でやり直し)');
+}
+function redo(){
+  if (_histIdx >= _hist.length - 1){ toast('やり直す操作がありません'); return; }
+  _histIdx++;
+  restoreSnapshot(_hist[_histIdx]);
+  updateUndoButtons();
+  toast('やり直しました');
+}
+function updateUndoButtons(){
+  const u = $('#btnUndo'), r = $('#btnRedo');
+  if (u) u.disabled = _histIdx <= 0;
+  if (r) r.disabled = _histIdx >= _hist.length - 1;
+}
+
+// ---------------- 自動保存(ブラウザ終了対策) ----------------
+const AS_KEY = 'cfgnet.autosave.v1';
+function lsAvailable(){
+  try { localStorage.setItem('__cfgnet_t', '1'); localStorage.removeItem('__cfgnet_t'); return true; }
+  catch { return false; }
+}
+const _ls = lsAvailable();
+let _asT = 0;
+function scheduleAutosave(){
+  clearTimeout(_asT);
+  _asT = setTimeout(() => { saveAutosave(); commitHistory(); }, 700);
+}
+function saveAutosave(){
+  if (!_ls) return;
+  if (!state.devices.length && !state.links.length && !state.notes.length) return; // 空の状態で上書きしない
+  try {
+    localStorage.setItem(AS_KEY, JSON.stringify({ ts: Date.now(), projectName: state.projectName,
+      devices: state.devices, links: state.links, notes: state.notes, l3SegPos: state.l3SegPos, arp: state.arp }));
+    const s = $('#asStatus');
+    if (s) s.textContent = '自動保存 ' + new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  } catch {}
+}
+function tryRestoreAutosave(){
+  if (!_ls) return false;
+  try {
+    const raw = localStorage.getItem(AS_KEY);
+    if (!raw) return false;
+    const j = JSON.parse(raw);
+    if (!j.devices || !j.devices.length) return false;
+    state.devices = j.devices; state.links = j.links || [];
+    state.notes = (j.notes || []).map(n => ({ view: 'logical', ...n }));
+    state.l3SegPos = j.l3SegPos || {};
+    state.arp = j.arp || state.arp || {};
+    state.projectName = j.projectName || '';
+    normalizeState();
+    toast('前回の編集状態を復元しました(' + new Date(j.ts).toLocaleString('ja-JP') + ')');
+    return true;
+  } catch { return false; }
+}
+function clearAll(){
+  if (!window.confirm('現在の内容(機器・接続)をすべてクリアします。よろしいですか？')) return;
+  state.devices = []; state.links = []; state.notes = []; state.projectName = '';
+  state.l3SegPos = {}; state.arp = {};
+  state.selectedDevice = null; state.selectedNote = null; state.sel = [];
+  editingLink = null;
+  if (_ls){ try { localStorage.removeItem(AS_KEY); } catch {} }
+  const s = $('#asStatus'); if (s) s.textContent = '';
+  toast('クリアしました');
+  renderAll();
+}
+
+// ---------------- sample ----------------
+const SAMPLE = `hostname CORE-SW1
+!
+ip routing
+spanning-tree mode rapid-pvst
+spanning-tree vlan 1,10,20,30 priority 4096
+!
+vlan 10
+ name Server
+vlan 20
+ name Office
+vlan 30
+ name Guest
+!
+interface Vlan10
+ ip address 10.0.10.2 255.255.255.0
+ standby 10 ip 10.0.10.1
+ standby 10 priority 110
+!
+interface Vlan20
+ ip address 10.0.20.2 255.255.255.0
+ standby 20 ip 10.0.20.1
+ standby 20 priority 110
+!
+interface TenGigabitEthernet1/0/1
+ description To CORE-SW2 Te1/0/1 (Po1)
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30
+ channel-group 1 mode active
+!
+interface TenGigabitEthernet1/0/2
+ description To CORE-SW2 Te1/0/2 (Po1)
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30
+ channel-group 1 mode active
+!
+interface TenGigabitEthernet1/0/3
+ description To ACC-SW1 Te1/0/49
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+!
+interface GigabitEthernet1/0/10
+ description To FW-01 Gi0/0
+ no switchport
+ ip address 10.0.0.1 255.255.255.252
+!
+interface GigabitEthernet1/0/11
+ description To RT-01 Gi0/0
+ no switchport
+ ip address 10.0.1.1 255.255.255.252
+!
+router eigrp 100
+ network 10.0.0.0
+!
+ip route 0.0.0.0 0.0.0.0 10.0.0.2
+!
+ip access-list extended OFFICE-OUT
+ permit ip 10.0.20.0 0.0.0.255 any
+!
+access-list 10 permit 10.0.10.0 0.0.0.255
+!
+hostname CORE-SW2
+!
+ip routing
+spanning-tree mode rapid-pvst
+spanning-tree vlan 1,10,20,30 priority 8192
+!
+vlan 10
+ name Server
+vlan 20
+ name Office
+vlan 30
+ name Guest
+!
+interface Vlan10
+ ip address 10.0.10.3 255.255.255.0
+ standby 10 ip 10.0.10.1
+!
+interface Vlan20
+ ip address 10.0.20.3 255.255.255.0
+ standby 20 ip 10.0.20.1
+!
+interface TenGigabitEthernet1/0/1
+ description To CORE-SW1 Te1/0/1 (Po1)
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30
+ channel-group 1 mode active
+!
+interface TenGigabitEthernet1/0/2
+ description To CORE-SW1 Te1/0/2 (Po1)
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30
+ channel-group 1 mode active
+!
+interface TenGigabitEthernet1/0/3
+ description To ACC-SW2 Te1/0/49
+ switchport mode trunk
+ switchport trunk allowed vlan 20,30
+!
+router eigrp 100
+!
+hostname ACC-SW1
+!
+switch 1 provision ws-c2960x-48fps-l
+switch 2 provision ws-c2960x-48fps-l
+!
+spanning-tree mode rapid-pvst
+!
+vlan 10
+ name Server
+vlan 20
+ name Office
+!
+interface TenGigabitEthernet1/0/49
+ description Uplink to CORE-SW1 Te1/0/3
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+!
+interface GigabitEthernet1/0/1
+ description Office-PC
+ switchport mode access
+ switchport access vlan 20
+!
+interface GigabitEthernet1/0/48
+ description To ACC-SW2 Gi1/0/48
+ switchport mode trunk
+ switchport trunk allowed vlan 20
+!
+hostname ACC-SW2
+!
+spanning-tree mode rapid-pvst
+!
+vlan 20
+ name Office
+vlan 30
+ name Guest
+!
+interface TenGigabitEthernet1/0/49
+ description Uplink to CORE-SW2 Te1/0/3
+ switchport mode trunk
+ switchport trunk allowed vlan 20,30
+!
+interface GigabitEthernet1/0/48
+ description To ACC-SW1 Gi1/0/48
+ switchport mode trunk
+ switchport trunk allowed vlan 20
+!
+hostname RT-01
+!
+interface GigabitEthernet0/0
+ description To CORE-SW1 Gi1/0/11
+ ip address 10.0.1.2 255.255.255.252
+!
+interface GigabitEthernet0/1
+ description WAN-ISP
+ ip address 203.0.113.2 255.255.255.252
+!
+interface Loopback0
+ ip address 192.168.255.1 255.255.255.255
+!
+router bgp 65001
+!
+ip route 10.0.0.0 255.255.0.0 10.0.1.1
+!
+access-list 100 permit ip any any
+!
+hostname FW-01
+!
+interface GigabitEthernet0/0
+ description To CORE-SW1 Gi1/0/10
+ ip address 10.0.0.2 255.255.255.252
+!`;
+
+function loadSample(){
+  importConfigs(SAMPLE);
+  const loc = { 'CORE-SW1': '本社3F サーバ室 Rack-A', 'CORE-SW2': '本社3F サーバ室 Rack-B',
+    'ACC-SW1': '本社2F EPS', 'ACC-SW2': '本社4F EPS', 'FW-01': '本社3F サーバ室 Rack-A',
+    'RT-01': '本社3F サーバ室 Rack-A' };
+  state.devices.forEach(d => { if (loc[d.hostname]) d.location = loc[d.hostname]; });
+  if (!state.notes.some(n => n.text.includes('HSRP')))
+    state.notes.push({ id: uid(), view: 'logical', x: 640, y: 24,
+      text: 'コアはHSRP+Po1(LACP)で冗長化\nRT-01経由でWANへ接続', color: '#FFF7CC' });
+  autoLayout();
+}
+
+// ---------------- wiring ----------------
+function populateVlanFilter(){
+  const sel = $('#vlanFilter'); if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '';
+  sel.append(el('option', { value: '' }, 'VLAN絞込なし'));
+  const vs = new Set();
+  state.devices.forEach(d => {
+    Object.keys(d.vlans).forEach(v => vs.add(+v));
+    Object.entries(d.interfaces).forEach(([p, it]) => {
+      const sm = p.match(/^Vlan(\d+)$/); if (sm) vs.add(+sm[1]);
+      if (it.dot1q) vs.add(it.dot1q);
+    });
+  });
+  [...vs].sort((a,b)=>a-b).forEach(v => {
+    const names = state.devices.map(d => d.vlans[v]).filter(Boolean);
+    sel.append(el('option', { value: v }, 'VLAN ' + v + (names[0] ? ' (' + names[0] + ')' : '')));
+  });
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  else { sel.value = ''; state.vlanFilter = ''; }
+}
+function renderAll(){ populateVlanFilter(); renderSide(); renderCanvas(); scheduleAutosave(); }
+
+document.querySelectorAll('.side-tabs button').forEach(b =>
+  b.addEventListener('click', () => { state.sideTab = b.dataset.st; renderSide(); }));
+function updateViewBar(){
+  const l3 = state.view === 'l3';
+  const t = $('#l3Tools'); if (t) t.style.display = l3 ? 'flex' : 'none';
+  const s = $('#btnSyncLayout'); if (s) s.style.display = l3 ? 'none' : '';
+  const q = $('#devSearch');
+  if (q){
+    q.placeholder = l3 ? '機器名・IPで検索' : '機器名で検索';
+    q.title = l3 ? '機器名のほか、IPアドレスやネットワークアドレス(例: 10.1.2 / 10.1.2.0/24)でも検索できます' : '';
+  }
+}
+document.querySelectorAll('.vtab').forEach(b =>
+  b.addEventListener('click', () => {
+    state.view = b.dataset.v;
+    document.querySelectorAll('.vtab').forEach(x => x.classList.toggle('on', x === b));
+    updateViewBar();
+    renderCanvas();
+  }));
+$('#chkL2').addEventListener('change', e => {
+  state.showL2 = e.target.checked;
+  if (state.view === 'l3') renderCanvas();
+});
+$('#btnL3Auto').addEventListener('click', () => {
+  if (!state.devices.length) return toast('機器がありません');
+  l3AutoLayout();
+});
+$('#btnL3FromLogical').addEventListener('click', () => {
+  if (!state.devices.length) return toast('機器がありません');
+  state.devices.forEach(d => { if (d.pos) d.l3Pos = { ...d.pos }; });
+  if (L3M) L3M.segs.forEach(s => delete state.l3SegPos[s.key]); // セグメントは新しい配置に付け直し
+  toast('論理図の配置をL3図へ反映しました(セグメントは再配置)');
+  if (state.view === 'l3') renderCanvas();
+  scheduleAutosave();
+});
+$('#btnSample').addEventListener('click', loadSample);
+$('#btnAuto').addEventListener('click', autoLayout);
+$('#btnPng').addEventListener('click', exportPng);
+$('#btnSvg').addEventListener('click', exportSvg);
+$('#btnJsonSave').addEventListener('click', openSaveDialog);
+$('#btnSaveOk').addEventListener('click', () => doSaveJson($('#saveName').value));
+$('#btnSaveCancel').addEventListener('click', closeSaveDialog);
+$('#saveName').addEventListener('keydown', e => { if (e.key === 'Enter') doSaveJson($('#saveName').value); });
+$('#btnNew').addEventListener('click', clearAll);
+$('#btnUndo').addEventListener('click', undo);
+$('#btnRedo').addEventListener('click', redo);
+window.addEventListener('beforeunload', saveAutosave);
+$('#btnJsonLoad').addEventListener('click', () => $('#fileJson').click());
+$('#fileJson').addEventListener('change', e => { if (e.target.files[0]) loadJson(e.target.files[0]); e.target.value = ''; });
+$('#zoomIn').addEventListener('click', () => zoomBy(1.2));
+$('#zoomOut').addEventListener('click', () => zoomBy(1/1.2));
+$('#zoomFit').addEventListener('click', fitView);
+$('#vlanFilter').addEventListener('change', e => { state.vlanFilter = e.target.value; renderCanvas(); });
+$('#btnAddNote').addEventListener('click', addNote);
+document.querySelectorAll('#alignTools [data-al]').forEach(b =>
+  b.addEventListener('click', () => alignSel(b.dataset.al)));
+document.querySelectorAll('#alignTools [data-ds]').forEach(b =>
+  b.addEventListener('click', () => distributeSel(b.dataset.ds)));
+$('#btnSyncLayout').addEventListener('click', () => {
+  if (!state.devices.length) return toast('機器がありません');
+  state.devices.forEach(d => { if (d.pos) d.physPos = { ...d.pos }; });
+  toast('論理図の配置を物理図へコピーしました');
+  if (state.view === 'physical') renderCanvas();
+  scheduleAutosave();
+});
+document.addEventListener('keydown', e => {
+  const tg = e.target;
+  const typing = tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.tagName === 'SELECT');
+  if ((e.ctrlKey || e.metaKey) && !typing && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')){
+    e.preventDefault();
+    if (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey)) redo();
+    else undo();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !typing){
+    if (state.view === 'table') return;
+    e.preventDefault();
+    selectAll();
+    toast(`${state.sel.length}件を選択しました(まとめてドラッグで移動 / Escで解除)`);
+  } else if (e.key === 'Escape' && !typing){
+    state.sel = []; refreshSelClasses();
+  }
+});
+let _searchT = 0;
+$('#devSearch').addEventListener('input', e => {
+  clearTimeout(_searchT);
+  _searchT = setTimeout(() => { state.search = e.target.value; renderCanvas(); }, 200);
+});
+$('#canvasHolder').addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const r = e.currentTarget.getBoundingClientRect();
+  zoomBy(e.deltaY < 0 ? 1.15 : 1/1.15, e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+
+tryRestoreAutosave();
+updateViewBar();
+renderAll();
+commitHistory(); // 初期状態を履歴に登録
+updateUndoButtons();
+
+</script>
+</body>
+</html>
