@@ -16,7 +16,7 @@ Ciscoの `show running-config` を貼り付けるだけで、ネットワーク�
 
 ## クイックスタート
 
-1. `network-diagram.html` をダウンロードしてブラウザで開く(Chrome/Edge推奨)
+1. `network-diagram_V2.0.html` をダウンロードしてブラウザで開く(Chrome/Edge推奨)
 2. **「サンプル読込」** を押してデモ構成を確認
 3. 自分の環境で使うときは **「新規」** → 機器タブに `show run` を貼り付けて **「解析して追加」**
 
@@ -139,4 +139,4 @@ Vanilla JavaScript + SVG によるシングルファイルHTML(依存ライブ�
 
 ## ライセンス
 
-MIT License(社内利用の場合は組織のポリシーに合わせて変更してください)
+[MIT License](LICENSE) — 詳細は LICENSE ファイルを参照してください。
